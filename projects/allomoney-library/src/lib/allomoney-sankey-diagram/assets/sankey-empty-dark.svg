@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 480 260"
+     width="100%" height="100%"
+     preserveAspectRatio="xMidYMid meet"
+     role="img" aria-labelledby="sankey-empty-dark-title">
+
+  <title id="sankey-empty-dark-title">No data</title>
+
+  <!-- Panel surface — delete this rect to drop the placeholder onto an
+       existing card background. -->
+  <rect id="surface" x="0.5" y="0.5" width="479" height="259" rx="12"
+        fill="#101828" stroke="#344054" stroke-width="1"/>
+
+  <!-- Caption -->
+  <text x="240" y="40"
+        text-anchor="middle"
+        font-family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="14" font-weight="500" letter-spacing="0.6"
+        fill="#98a2b3">No data</text>
+
+  <!-- Link: closed ribbon, source edge → target edge → back.
+       Dashed outline signals a scaffold rather than a flow of zero. -->
+  <path d="M46,94 C240,94 240,148 434,148 L434,206 C240,206 240,152 46,152 Z"
+        fill="#1d2939" stroke="#344054" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- Nodes -->
+  <g fill="#344054" stroke="#475467" stroke-width="1">
+    <rect x="32"  y="94"  width="14" height="58" rx="3"/>
+    <rect x="434" y="148" width="14" height="58" rx="3"/>
+  </g>
+</svg>

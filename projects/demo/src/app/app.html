@@ -1,0 +1,19 @@
+<main class="demo">
+  <h1>{{ title() }}</h1>
+  <p class="demo__hint">
+    Both cards render the component's <strong>empty state</strong> — proving the
+    inline light/dark placeholders ship with zero consumer config.
+  </p>
+
+  <section class="demo__grid">
+    <article class="demo__card demo__card--light">
+      <h2>Light theme</h2>
+      <allomoney-sankey-diagram [data]="data()" theme="light" />
+    </article>
+
+    <article class="demo__card demo__card--dark">
+      <h2>Dark theme</h2>
+      <allomoney-sankey-diagram [data]="data()" theme="dark" />
+    </article>
+  </section>
+</main>
