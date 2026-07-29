@@ -1,0 +1,15 @@
+@if (isEmpty()) {
+  <!-- Themed empty state. The illustration is a CSS background-image
+       (inlined as a data-URI at build time) chosen by the host [data-theme]. -->
+  <div class="allomoney-sankey__empty" role="status" aria-live="polite">
+    <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
+    <p class="allomoney-sankey__empty-text">No flows to display yet</p>
+  </div>
+} @else {
+  <!-- TODO(sankey): Replace this stub with the native-SVG Sankey render.
+       Labels MUST be bound via interpolation (auto-escaped) — never innerHTML. -->
+  <svg class="allomoney-sankey__canvas" [attr.data-theme]="theme()"
+       role="img" aria-label="Sankey diagram">
+    <!-- TODO(sankey): <path> ribbons + <rect> nodes emitted by the layout engine. -->
+  </svg>
+}

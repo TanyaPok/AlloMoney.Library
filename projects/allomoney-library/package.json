@@ -1,0 +1,25 @@
+{
+  "name": "allomoney-library",
+  "version": "0.1.0",
+  "description": "Zero-dependency, standalone Angular Sankey diagram component.",
+  "keywords": [
+    "angular",
+    "sankey",
+    "diagram",
+    "chart"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/TanyaPok/AlloMoney.Library#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TanyaPok/AlloMoney.Library.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TanyaPok/AlloMoney.Library/issues"
+  },
+  "peerDependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/core": "^22.0.0"
+  },
+  "sideEffects": false
+}

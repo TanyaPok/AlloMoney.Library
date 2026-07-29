@@ -1,0 +1,58 @@
+:host {
+  display: block;
+  position: relative;
+  inline-size: 100%;
+  min-block-size: 200px;
+  container-type: inline-size;
+}
+
+.allomoney-sankey__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  block-size: 100%;
+  min-block-size: 200px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.allomoney-sankey__empty-art {
+  inline-size: 100%;
+  max-inline-size: 320px;
+  aspect-ratio: 320 / 200;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+
+  // The two placeholder SVGs are referenced by URL here. ng-packagr inlines
+  // them as data-URIs at build time, so consumers need ZERO angular.json
+  // asset configuration. The physical .svg files live in ./assets/.
+  // Default (light) — also the fallback if no data-theme attribute is set.
+  background-image: url('./assets/sankey-empty-light.svg');
+}
+
+// The host reflects the resolved theme via [data-theme], letting us swap the
+// inline placeholder without any JS.
+:host([data-theme='dark']) .allomoney-sankey__empty-art {
+  background-image: url('./assets/sankey-empty-dark.svg');
+}
+
+.allomoney-sankey__empty-text {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 0.875rem;
+  color: #9aa7c2;
+}
+
+:host([data-theme='dark']) .allomoney-sankey__empty-text {
+  color: #6b7a99;
+}
+
+.allomoney-sankey__canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 200px;
+}
