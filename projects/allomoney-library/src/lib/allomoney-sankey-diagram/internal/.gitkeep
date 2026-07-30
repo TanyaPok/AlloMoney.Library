@@ -1,7 +1,0 @@
-# Internal, NON-EXPORTED implementation details for the Sankey renderer.
-#
-# The dependency-free Sankey layout engine (node ranking, flow ordering,
-# vertical positioning) and the native-SVG path builders will live here.
-#
-# Nothing in this folder is re-exported from public-api.ts. Do not import from
-# here in consumer-facing code paths that leak types into the public API.

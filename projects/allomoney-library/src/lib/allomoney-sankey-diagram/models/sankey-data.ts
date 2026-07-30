@@ -12,14 +12,19 @@
  */
 export interface SankeyNode {
   /** Stable, unique identifier used to reference this node from links. */
-  id: string;
+  readonly id: number;
   /** Human-readable label. Treat as untrusted: sanitize before rendering. */
-  label: string;
+  readonly name?: string | null;
+  /**
+   * Total deposit for this node. When omitted it is derived from the sum of
+   * incoming link values (business rule 2).
+   */
+  readonly value?: number | null;
   /**
    * Optional CSS color for the node. When omitted, the component picks a
    * color from its theme palette.
    */
-  color?: string;
+  readonly color?: string;
 }
 
 /**
@@ -28,13 +33,13 @@ export interface SankeyNode {
  */
 export interface SankeyLink {
   /** {@link SankeyNode.id} of the source (flow origin). */
-  source: string;
+  readonly source: number;
   /** {@link SankeyNode.id} of the target (flow destination). */
-  target: string;
-  /** Magnitude of the flow. Must be a finite, non-negative number. */
-  value: number;
-  /** Optional CSS color for this link. Falls back to a theme color. */
-  color?: string;
+  readonly target: number;
+  /** Magnitude of the flow. Must be a finite, positive number. */
+  readonly value: number;
+  /** Optional CSS color for this link. Falls back to the source node color. */
+  readonly color?: string;
 }
 
 /**
@@ -44,8 +49,15 @@ export interface SankeyLink {
  * themed empty state instead of a diagram.
  */
 export interface SankeyData {
-  nodes: SankeyNode[];
-  links: SankeyLink[];
+  readonly nodes: readonly SankeyNode[];
+  readonly links: readonly SankeyLink[];
+  /** ISO currency code used when formatting values. Optional. */
+  readonly currency?: string | null;
+  /**
+   * Flow direction of the diagram. Defaults to `'horizontal'` (business
+   * rule 1) when omitted.
+   */
+  readonly orientation?: SankeyOrientation;
 }
 
 /**
@@ -53,3 +65,9 @@ export interface SankeyData {
  * (light or dark) is shown and the default color palette.
  */
 export type SankeyTheme = 'light' | 'dark';
+
+/**
+ * Direction in which flows are laid out. Only `'horizontal'` is rendered
+ * today; `'vertical'` is reserved for a future release.
+ */
+export type SankeyOrientation = 'horizontal' | 'vertical';
