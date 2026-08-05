@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSankeyLayout } from './sankey-layout';
+import { computeSankeyLayout, DEFAULT_LAYOUT_OPTIONS } from './sankey-layout';
 import type { ValidLink, ValidNode } from './validate-sankey-data';
 
 /** The UC-1 reference payload, already validated. */
@@ -112,6 +112,66 @@ describe('computeSankeyLayout (business rule 2)', () => {
     } else {
       expect(toT2.labelY).toBeLessThan(toT1.labelY);
     }
+  });
+
+  it('places every node name/id on the left side of the node, vertically centered (business rule 2)', () => {
+    const layout = computeSankeyLayout(REF_NODES, REF_LINKS, 'light');
+    for (const node of layout.nodes) {
+      // Left of the node: right-aligned text ending just before the left edge.
+      expect(node.labelAnchor).toBe('end');
+      expect(node.labelX).toBeLessThan(node.x);
+      // Vertically centered on the node.
+      expect(node.labelY).toBeCloseTo(node.y + node.height / 2, 6);
+    }
+    // Including the last-rank node (previously placed on the right).
+    const last = nodeById(layout, 4);
+    expect(last.rank).toBe(2);
+    expect(last.labelX).toBeLessThan(last.x);
+  });
+
+  it('spreads link value labels so none overlap (business rule 2)', () => {
+    // Four near-zero flows between the same two columns would otherwise pile
+    // their labels up at nearly the same point.
+    const nodes: ValidNode[] = [
+      { id: 0, label: 'a', value: null },
+      { id: 1, label: 'b', value: null },
+      { id: 2, label: 'c', value: null },
+      { id: 3, label: 'd', value: null },
+      { id: 4, label: 'e', value: null },
+      { id: 5, label: 'f', value: null },
+    ];
+    const links: ValidLink[] = [
+      { source: 0, target: 2, value: 0.01 },
+      { source: 0, target: 3, value: 0.01 },
+      { source: 1, target: 4, value: 0.01 },
+      { source: 1, target: 5, value: 0.01 },
+    ];
+    const layout = computeSankeyLayout(nodes, links, 'light');
+    // All four links span rank 0 → rank 1, so their labels share one x band.
+    const xBands = new Set(layout.links.map((l) => Math.round(l.labelX)));
+    expect(xBands.size).toBe(1);
+    const ys = layout.links.map((l) => l.labelY).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) {
+      expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(
+        DEFAULT_LAYOUT_OPTIONS.minLabelGap - 1e-6,
+      );
+    }
+  });
+
+  it('keeps a link value label at the middle of its link when it fits (business rule 2)', () => {
+    // A single link cannot collide, so its label must remain at the exact
+    // horizontal + vertical middle of the ribbon.
+    const nodes: ValidNode[] = [
+      { id: 0, label: 'a', value: null },
+      { id: 1, label: 'b', value: null },
+    ];
+    const links: ValidLink[] = [{ source: 0, target: 1, value: 5 }];
+    const layout = computeSankeyLayout(nodes, links, 'light');
+    const only = layout.links[0];
+    const source = nodeById(layout, 0);
+    const target = nodeById(layout, 1);
+    const midX = (source.x + source.width + target.x) / 2;
+    expect(only.labelX).toBeCloseTo(midX, 6);
   });
 
   it('is deterministic', () => {

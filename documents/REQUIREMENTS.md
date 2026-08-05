@@ -147,7 +147,11 @@ of the names, values, and colors is important.
 `nodes[i].value` is the total deposit for that node. If it is not set, it equals
 the sum of all `links.value` whose `target` equals this `node.id`. Example
 diagrams: `@documents/examples/sankey-dark-theme.png` and
-`@documents/examples/sankey-light-theme.png`.
+`@documents/examples/sankey-light-theme.png`. `nodes[i].value` must be placed in the middle of the node.
+`links[i].value` must be placed in the middle of the link. Two or more `links[i].value` cannot overlap on Component. 
+
+`nodes[i].name` or `nodes[i].id` must be placed on the left side of the node for horizontal orientation 
+and at the top of the node for vertical orientation. 
 
 If a color is not directly specified for a node, use the following code to derive
 a node color. The color must be unique for each node.

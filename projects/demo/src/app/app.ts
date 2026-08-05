@@ -21,13 +21,15 @@ export class App {
             {id: 0, name: 'Account 0', value: 10.0},
             {id: 1, name: 'Account 1'},
             {id: 2},
+            {id: 3, name: 'Account 3'},
+            {id: 4, name: 'Account 3'}
         ],
         links: [
             {source: 0, target: 2, value: 5.5},
             {source: 0, target: 3, value: 4.5},
             {source: 1, target: 2, value: 0.5},
-            {source: 2, target: 4, value: 6.0},
-            {source: 3, target: 4, value: 5.0},
+            {source: 2, target: 4, value: 10},
+            {source: 3, target: 4, value: 4}
         ],
     });
 }

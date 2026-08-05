@@ -62,6 +62,12 @@ export interface LayoutOptions {
   readonly labelGap: number;
   /** Minimum drawn thickness so tiny flows/nodes stay visible. */
   readonly minThickness: number;
+  /**
+   * Minimum vertical distance (center-to-center, user units) between two link
+   * value labels that share a horizontal band, so they never overlap
+   * (business rule 2). Should be at least the value label's line height.
+   */
+  readonly minLabelGap: number;
 }
 
 export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
@@ -75,11 +81,71 @@ export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   marginLeft: 108,
   labelGap: 10,
   minThickness: 1.5,
+  minLabelGap: 18,
 };
 
 /** Formats a monetary value the same way the reference diagrams do. */
 function formatValue(value: number): string {
   return value.toFixed(2);
+}
+
+/** Anything carrying a horizontal band key and a mutable vertical position. */
+interface PlacedLabel {
+  readonly labelX: number;
+  labelY: number;
+}
+
+/**
+ * Spreads link value labels so no two overlap (business rule 2: "Two or more
+ * `links[i].value` cannot overlap on Component").
+ *
+ * Only labels that share a horizontal band can collide: links between the same
+ * pair of columns share the exact same midpoint x, and adjacent bands are a
+ * full column apart. So labels are grouped by their (rounded) `labelX`, and
+ * within each group pushed apart to at least `minGap` user units
+ * center-to-center. Each group is then re-centered on its original mean (to
+ * minimize how far any label drifts from the middle of its link) and clamped
+ * within `[top, bottom]` so labels stay on-canvas. Mutates `labelY` in place.
+ */
+function separateLabelBands(
+  labels: readonly PlacedLabel[],
+  minGap: number,
+  top: number,
+  bottom: number,
+): void {
+  const bands = new Map<number, PlacedLabel[]>();
+  for (const label of labels) {
+    const key = Math.round(label.labelX);
+    let band = bands.get(key);
+    if (!band) bands.set(key, (band = []));
+    band.push(label);
+  }
+
+  for (const band of bands.values()) {
+    if (band.length < 2) continue;
+    band.sort((a, b) => a.labelY - b.labelY);
+
+    const mean = (arr: readonly PlacedLabel[]): number =>
+      arr.reduce((sum, l) => sum + l.labelY, 0) / arr.length;
+    const originalMean = mean(band);
+
+    // Push each label below the previous one by at least `minGap`.
+    for (let i = 1; i < band.length; i++) {
+      const minY = band[i - 1].labelY + minGap;
+      if (band[i].labelY < minY) band[i].labelY = minY;
+    }
+
+    // Re-center the spread block on its original mean to minimize drift.
+    const shift = originalMean - mean(band);
+    for (const label of band) label.labelY += shift;
+
+    // Clamp the block within the canvas, favoring the top edge if it is too
+    // tall to fit (so the first label always stays visible).
+    const overflowBottom = band[band.length - 1].labelY - bottom;
+    if (overflowBottom > 0) for (const l of band) l.labelY -= overflowBottom;
+    const overflowTop = top - band[0].labelY;
+    if (overflowTop > 0) for (const l of band) l.labelY += overflowTop;
+  }
 }
 
 /** Mutable bookkeeping used only inside this module during layout. */
@@ -143,7 +209,7 @@ export function computeSankeyLayout(
   options: LayoutOptions = DEFAULT_LAYOUT_OPTIONS,
 ): SankeyLayout {
   void orientation; // horizontal-only for UC-1; kept for API stability.
-  const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minThickness } = options;
+  const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minThickness, minLabelGap } = options;
 
   const palette = generatePalette(nodes.length, theme);
   const work: WorkNode[] = nodes.map((node, index) => ({
@@ -253,9 +319,20 @@ export function computeSankeyLayout(
     }
   }
 
-  const layoutLinks: LayoutLink[] = [];
-  // Build in input order for a stable, deterministic result.
-  for (const link of links) {
+  // Build geometry first (input order → stable, deterministic result), then
+  // resolve label overlaps before emitting the final link objects.
+  interface LinkGeom {
+    readonly link: ValidLink;
+    readonly source: WorkNode;
+    readonly path: string;
+    readonly thickness: number;
+    readonly valueLabel: string;
+    readonly a11yLabel: string;
+    readonly labelX: number;
+    labelY: number;
+  }
+
+  const geoms: LinkGeom[] = links.map((link) => {
     const source = byId.get(link.source)!;
     const target = byId.get(link.target)!;
     const thickness = thicknessOf(link);
@@ -277,38 +354,44 @@ export function computeSankeyLayout(
       'Z';
 
     const valueLabel = formatValue(link.value);
-    layoutLinks.push({
-      id: `${link.source}-${link.target}`,
-      source: link.source,
-      target: link.target,
+    return {
+      link,
+      source,
       path,
-      color: link.color ?? source.color,
       thickness,
       valueLabel,
-      labelX: xm,
-      labelY: (sy0 + sy1 + ty0 + ty1) / 4,
       a11yLabel: `${source.node.label} → ${target.node.label}: ${valueLabel}`,
-    });
-  }
+      labelX: xm, // horizontal middle of the link (business rule 2)
+      labelY: (sy0 + sy1 + ty0 + ty1) / 4, // ribbon center at that midpoint
+    };
+  });
+
+  // Business rule 2: two or more link value labels cannot overlap. Nudge apart
+  // any that share a horizontal band; horizontal midpoints are preserved.
+  separateLabelBands(geoms, minLabelGap, marginTop, height - marginBottom);
+
+  const layoutLinks: LayoutLink[] = geoms.map((geom) => ({
+    id: `${geom.link.source}-${geom.link.target}`,
+    source: geom.link.source,
+    target: geom.link.target,
+    path: geom.path,
+    color: geom.link.color ?? geom.source.color,
+    thickness: geom.thickness,
+    valueLabel: geom.valueLabel,
+    labelX: geom.labelX,
+    labelY: geom.labelY,
+    a11yLabel: geom.a11yLabel,
+  }));
 
   // --- 7. Node geometry + labels -----------------------------------------
+  // Business rule 2: for horizontal orientation every node's name/id sits on
+  // the LEFT side of the node, vertically centered — the same placement for all
+  // ranks (see the reference diagrams). Vertical orientation (label at the top
+  // of the node) is reserved for a future release; UC-1 renders horizontal only.
   const layoutNodes: LayoutNode[] = work.map((w) => {
-    let labelX: number;
-    let labelY: number;
-    let labelAnchor: 'start' | 'middle' | 'end';
-    if (w.rank === 0) {
-      labelAnchor = 'end';
-      labelX = w.x - labelGap;
-      labelY = w.y + w.height / 2;
-    } else if (w.rank === maxRank) {
-      labelAnchor = 'start';
-      labelX = w.x + nodeWidth + labelGap;
-      labelY = w.y + w.height / 2;
-    } else {
-      labelAnchor = 'middle';
-      labelX = w.x + nodeWidth / 2;
-      labelY = w.y - labelGap;
-    }
+    const labelAnchor: 'start' | 'middle' | 'end' = 'end';
+    const labelX = w.x - labelGap;
+    const labelY = w.y + w.height / 2;
     return {
       id: w.node.id,
       label: w.node.label,

@@ -6,7 +6,6 @@
   --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(0, 0, 0, 0.18);
   --allomoney-link-opacity: 0.45;
-  --allomoney-empty-text-color: #9aa7c2;
   --allomoney-label-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --allomoney-label-size: 14px;
   --allomoney-value-size: 15px;
@@ -25,7 +24,6 @@
   --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(255, 255, 255, 0.22);
   --allomoney-link-opacity: 0.5;
-  --allomoney-empty-text-color: #6b7a99;
 }
 
 // --- Empty state (business rules 4 & 5) ----------------------------------
@@ -35,6 +33,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
+  inline-size: 100%;
   block-size: 100%;
   min-block-size: 200px;
   padding: 1rem;
@@ -42,9 +41,12 @@
 }
 
 .allomoney-sankey__empty-art {
+  // Stretch to fill the component's width (matching the diagram); the SVG is
+  // centered with `contain`, so it scales up without distortion.
+  flex: 1 1 auto;
   inline-size: 100%;
-  max-inline-size: 320px;
-  aspect-ratio: 320 / 200;
+  max-inline-size: none;
+  min-block-size: 160px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
@@ -58,13 +60,6 @@
 
 :host([data-theme='dark']) .allomoney-sankey__empty-art {
   background-image: url('./assets/sankey-empty-dark.svg');
-}
-
-.allomoney-sankey__empty-text {
-  margin: 0;
-  font-family: var(--allomoney-label-font);
-  font-size: 0.875rem;
-  color: var(--allomoney-empty-text-color);
 }
 
 // --- Diagram -------------------------------------------------------------

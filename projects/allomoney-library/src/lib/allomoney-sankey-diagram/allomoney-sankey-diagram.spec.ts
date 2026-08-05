@@ -61,11 +61,11 @@ describe('AllomoneySankeyDiagram', () => {
       expect(component.isEmpty()).toBe(true);
     });
 
-    it('exposes the empty message as real text', async () => {
+    it('exposes the empty message as real text for assistive tech', async () => {
       await setup();
       fixture.detectChanges();
-      const text = el().querySelector('.allomoney-sankey__empty-text');
-      expect(text?.textContent?.trim().length).toBeGreaterThan(0);
+      const empty = el().querySelector('.allomoney-sankey__empty');
+      expect(empty?.getAttribute('aria-label')?.trim().length).toBeGreaterThan(0);
     });
   });
 

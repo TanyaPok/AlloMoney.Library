@@ -2,9 +2,13 @@
   <!-- Themed empty state (business rules 4 & 5). The illustration is a CSS
        background-image (inlined as a data-URI at build time) chosen by the
        host [data-theme]; the message is real text for screen readers. -->
-  <div class="allomoney-sankey__empty" role="status" aria-live="polite">
+  <div
+    class="allomoney-sankey__empty"
+    role="status"
+    aria-live="polite"
+    aria-label="No flows to display yet"
+  >
     <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
-    <p class="allomoney-sankey__empty-text">No flows to display yet</p>
   </div>
 } @else {
   @let view = layout()!;
