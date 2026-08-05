@@ -15,6 +15,7 @@ export type {
   SankeyNode,
   SankeyLink,
   SankeyTheme,
+  SankeyOrientation,
 } from './lib/allomoney-sankey-diagram/models/sankey-data';
 
 // Configuration

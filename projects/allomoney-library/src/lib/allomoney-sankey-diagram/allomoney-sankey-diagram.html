@@ -1,15 +1,90 @@
 @if (isEmpty()) {
-  <!-- Themed empty state. The illustration is a CSS background-image
-       (inlined as a data-URI at build time) chosen by the host [data-theme]. -->
-  <div class="allomoney-sankey__empty" role="status" aria-live="polite">
+  <!-- Themed empty state (business rules 4 & 5). The illustration is a CSS
+       background-image (inlined as a data-URI at build time) chosen by the
+       host [data-theme]; the message is real text for screen readers. -->
+  <div
+    class="allomoney-sankey__empty"
+    role="status"
+    aria-live="polite"
+    aria-label="No flows to display yet"
+  >
     <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
-    <p class="allomoney-sankey__empty-text">No flows to display yet</p>
   </div>
 } @else {
-  <!-- TODO(sankey): Replace this stub with the native-SVG Sankey render.
-       Labels MUST be bound via interpolation (auto-escaped) — never innerHTML. -->
-  <svg class="allomoney-sankey__canvas" [attr.data-theme]="theme()"
-       role="img" aria-label="Sankey diagram">
-    <!-- TODO(sankey): <path> ribbons + <rect> nodes emitted by the layout engine. -->
+  @let view = layout()!;
+  <svg
+    class="allomoney-sankey__canvas"
+    [attr.viewBox]="'0 0 ' + view.width + ' ' + view.height"
+    preserveAspectRatio="xMidYMid meet"
+    role="img"
+    [attr.aria-labelledby]="titleId + ' ' + descId"
+  >
+    <title [id]="titleId">Sankey diagram of money flows</title>
+    <desc [id]="descId">{{ summary() }}</desc>
+
+    <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
+         in the visually-hidden list below. -->
+    <g class="allomoney-sankey__links" aria-hidden="true">
+      @for (link of view.links; track link.id) {
+        <path
+          class="allomoney-sankey__link"
+          [attr.d]="link.path"
+          [style.fill]="link.color"
+        />
+      }
+    </g>
+
+    <!-- Nodes + labels. Labels are bound via interpolation (auto-escaped);
+         never innerHTML — node/link names are untrusted. -->
+    <g class="allomoney-sankey__nodes" aria-hidden="true">
+      @for (node of view.nodes; track node.id) {
+        <rect
+          class="allomoney-sankey__node-rect"
+          [attr.x]="node.x"
+          [attr.y]="node.y"
+          [attr.width]="node.width"
+          [attr.height]="node.height"
+          rx="3"
+          [style.fill]="node.color"
+        />
+        <text
+          class="allomoney-sankey__node-label"
+          [attr.x]="node.labelX"
+          [attr.y]="node.labelY"
+          [attr.text-anchor]="node.labelAnchor"
+          dominant-baseline="middle"
+        >{{ node.label }}</text>
+        @if (node.valueLabel !== null) {
+          <text
+            class="allomoney-sankey__node-value"
+            [attr.x]="node.valueX"
+            [attr.y]="node.valueY"
+            text-anchor="middle"
+            dominant-baseline="middle"
+          >{{ node.valueLabel }}</text>
+        }
+      }
+    </g>
+
+    <!-- Per-flow value labels, drawn on top of the ribbons. -->
+    <g class="allomoney-sankey__link-labels" aria-hidden="true">
+      @for (link of view.links; track link.id) {
+        <text
+          class="allomoney-sankey__link-value"
+          [attr.x]="link.labelX"
+          [attr.y]="link.labelY"
+          text-anchor="middle"
+          dominant-baseline="middle"
+        >{{ link.valueLabel }}</text>
+      }
+    </g>
   </svg>
+
+  <!-- Text alternative: the flows as a visually-hidden list so information is
+       not conveyed by color/position alone. -->
+  <ul class="allomoney-sankey__sr-only">
+    @for (link of view.links; track link.id) {
+      <li>{{ link.a11yLabel }}</li>
+    }
+  </ul>
 }
