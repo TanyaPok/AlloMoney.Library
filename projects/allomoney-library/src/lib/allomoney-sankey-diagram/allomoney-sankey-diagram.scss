@@ -6,6 +6,9 @@
   --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(0, 0, 0, 0.18);
   --allomoney-link-opacity: 0.45;
+  // Opacity applied to elements outside the hovered chain (UC-2). Runtime-
+  // overridable like the other --allomoney-* theming variables.
+  --allomoney-dim-opacity: 0.3;
   --allomoney-label-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --allomoney-label-size: 14px;
   --allomoney-value-size: 15px;
@@ -74,7 +77,20 @@
 .allomoney-sankey__link {
   fill-opacity: var(--allomoney-link-opacity);
   stroke: none;
-  transition: fill-opacity 150ms ease;
+}
+
+// UC-2: hovering an element highlights its chain and makes every element
+// outside that chain half-transparent. The dim class is applied per node group,
+// per ribbon, and per link-value label; opacity transitions in for a smooth cue
+// (disabled under prefers-reduced-motion below).
+.allomoney-sankey__node,
+.allomoney-sankey__link,
+.allomoney-sankey__link-value {
+  transition: opacity 150ms ease;
+}
+
+.allomoney-sankey--dim {
+  opacity: var(--allomoney-dim-opacity);
 }
 
 .allomoney-sankey__node-rect {
@@ -115,7 +131,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .allomoney-sankey__link {
+  .allomoney-sankey__node,
+  .allomoney-sankey__link,
+  .allomoney-sankey__link-value {
     transition: none;
   }
 }

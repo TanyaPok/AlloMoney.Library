@@ -134,6 +134,68 @@ describe('AllomoneySankeyDiagram', () => {
     });
   });
 
+  describe('hover highlighting (UC-2)', () => {
+    const dim = (): NodeListOf<Element> =>
+      el().querySelectorAll('.allomoney-sankey--dim');
+    const dimmedNodes = (): NodeListOf<Element> =>
+      el().querySelectorAll('.allomoney-sankey__node.allomoney-sankey--dim');
+    const dimmedLinks = (): NodeListOf<Element> =>
+      el().querySelectorAll('.allomoney-sankey__link.allomoney-sankey--dim');
+
+    // Reference links, in render order: 0-2, 0-3, 1-2, 2-4, 3-4.
+    // Node groups render in input order: 0, 1, 2, 3, 4.
+
+    it('dims the sibling flows when hovering a link, then restores on leave', async () => {
+      await setup();
+      fixture.componentRef.setInput('dataSource', REFERENCE_DATA);
+      fixture.detectChanges();
+      expect(dim()).toHaveLength(0); // nothing dimmed initially
+
+      // Hover 1→2: chain is {1,2,4} + {1-2,2-4}; siblings 0 & 3 and their three
+      // links dim.
+      el().querySelectorAll('.allomoney-sankey__link')[2].dispatchEvent(
+        new Event('pointerenter'),
+      );
+      fixture.detectChanges();
+      expect(dimmedNodes()).toHaveLength(2); // nodes 0 and 3
+      expect(dimmedLinks()).toHaveLength(3); // 0-2, 0-3, 3-4
+
+      // Pointer leaves → the translucency is removed (main scenario step 4).
+      el().querySelectorAll('.allomoney-sankey__link')[2].dispatchEvent(
+        new Event('pointerleave'),
+      );
+      fixture.detectChanges();
+      expect(dim()).toHaveLength(0);
+    });
+
+    it('lights a source node\'s whole descendant cone and dims the rest', async () => {
+      await setup();
+      fixture.componentRef.setInput('dataSource', REFERENCE_DATA);
+      fixture.detectChanges();
+
+      // Hover node 0: chain {0,2,3,4}; only node 1 and link 1-2 fall outside.
+      el().querySelectorAll('.allomoney-sankey__node')[0].dispatchEvent(
+        new Event('pointerenter'),
+      );
+      fixture.detectChanges();
+      expect(dimmedNodes()).toHaveLength(1); // node 1
+      expect(dimmedLinks()).toHaveLength(1); // link 1-2
+    });
+
+    it('dims nothing when the hovered element reaches the whole diagram (extension 1.a)', async () => {
+      await setup();
+      fixture.componentRef.setInput('dataSource', REFERENCE_DATA);
+      fixture.detectChanges();
+
+      // Node 4 is the shared sink — every flow reaches it, so nothing dims.
+      el().querySelectorAll('.allomoney-sankey__node')[4].dispatchEvent(
+        new Event('pointerenter'),
+      );
+      fixture.detectChanges();
+      expect(dim()).toHaveLength(0);
+    });
+  });
+
   describe('invalid data (business rule 3)', () => {
     it('renders only the valid subset and logs rejected entries', async () => {
       const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
