@@ -23,58 +23,73 @@
     <desc [id]="descId">{{ summary() }}</desc>
 
     <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
-         in the visually-hidden list below. -->
+         in the visually-hidden list below. Hovering a ribbon highlights its
+         chain and dims the others (UC-2). -->
     <g class="allomoney-sankey__links" aria-hidden="true">
-      @for (link of view.links; track link.id) {
+      @for (link of renderLinks(); track link.id) {
         <path
           class="allomoney-sankey__link"
+          [class.allomoney-sankey--dim]="link.dimmed"
           [attr.d]="link.path"
           [style.fill]="link.color"
+          (pointerenter)="onHoverLink(link)"
+          (pointerleave)="onLeave()"
         />
       }
     </g>
 
     <!-- Nodes + labels. Labels are bound via interpolation (auto-escaped);
-         never innerHTML — node/link names are untrusted. -->
+         never innerHTML — node/link names are untrusted. Each node group is
+         hoverable and dims when another chain is highlighted (UC-2). -->
     <g class="allomoney-sankey__nodes" aria-hidden="true">
-      @for (node of view.nodes; track node.id) {
-        <rect
-          class="allomoney-sankey__node-rect"
-          [attr.x]="node.x"
-          [attr.y]="node.y"
-          [attr.width]="node.width"
-          [attr.height]="node.height"
-          rx="3"
-          [style.fill]="node.color"
-        />
-        <text
-          class="allomoney-sankey__node-label"
-          [attr.x]="node.labelX"
-          [attr.y]="node.labelY"
-          [attr.text-anchor]="node.labelAnchor"
-          dominant-baseline="middle"
-        >{{ node.label }}</text>
-        @if (node.valueLabel !== null) {
+      @for (node of renderNodes(); track node.id) {
+        <g
+          class="allomoney-sankey__node"
+          [class.allomoney-sankey--dim]="node.dimmed"
+          (pointerenter)="onHoverNode(node.id)"
+          (pointerleave)="onLeave()"
+        >
+          <rect
+            class="allomoney-sankey__node-rect"
+            [attr.x]="node.x"
+            [attr.y]="node.y"
+            [attr.width]="node.width"
+            [attr.height]="node.height"
+            rx="3"
+            [style.fill]="node.color"
+          />
           <text
-            class="allomoney-sankey__node-value"
-            [attr.x]="node.valueX"
-            [attr.y]="node.valueY"
-            text-anchor="middle"
+            class="allomoney-sankey__node-label"
+            [attr.x]="node.labelX"
+            [attr.y]="node.labelY"
+            [attr.text-anchor]="node.labelAnchor"
             dominant-baseline="middle"
-          >{{ node.valueLabel }}</text>
-        }
+          >{{ node.label }}</text>
+          @if (node.valueLabel !== null) {
+            <text
+              class="allomoney-sankey__node-value"
+              [attr.x]="node.valueX"
+              [attr.y]="node.valueY"
+              text-anchor="middle"
+              dominant-baseline="middle"
+            >{{ node.valueLabel }}</text>
+          }
+        </g>
       }
     </g>
 
     <!-- Per-flow value labels, drawn on top of the ribbons. -->
     <g class="allomoney-sankey__link-labels" aria-hidden="true">
-      @for (link of view.links; track link.id) {
+      @for (link of renderLinks(); track link.id) {
         <text
           class="allomoney-sankey__link-value"
+          [class.allomoney-sankey--dim]="link.dimmed"
           [attr.x]="link.labelX"
           [attr.y]="link.labelY"
           text-anchor="middle"
           dominant-baseline="middle"
+          (pointerenter)="onHoverLink(link)"
+          (pointerleave)="onLeave()"
         >{{ link.valueLabel }}</text>
       }
     </g>

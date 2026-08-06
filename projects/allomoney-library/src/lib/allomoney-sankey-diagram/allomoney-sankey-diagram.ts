@@ -5,11 +5,30 @@ import {
   effect,
   inject,
   input,
+  signal,
 } from '@angular/core';
 import { ALLOMONEY_LIBRARY_CONFIG } from '../config/allomoney-library-config';
 import type { SankeyData, SankeyTheme } from './models/sankey-data';
-import { computeSankeyLayout, type SankeyLayout } from './internal/sankey-layout';
+import {
+  computeSankeyLayout,
+  type LayoutLink,
+  type LayoutNode,
+  type SankeyLayout,
+} from './internal/sankey-layout';
+import { collectChain, type Chain, type ChainSeed } from './internal/sankey-chain';
 import { validateSankeyData } from './internal/validate-sankey-data';
+
+/** A node paired with its current hover-dim state (UC-2). */
+interface RenderNode extends LayoutNode {
+  /** `true` when a chain is hovered and this node is outside it. */
+  readonly dimmed: boolean;
+}
+
+/** A link paired with its current hover-dim state (UC-2). */
+interface RenderLink extends LayoutLink {
+  /** `true` when a chain is hovered and this link is outside it. */
+  readonly dimmed: boolean;
+}
 
 /** Monotonic id source so each instance gets unique `aria` target ids. */
 let uidCounter = 0;
@@ -79,6 +98,50 @@ export class AllomoneySankeyDiagram {
     return computeSankeyLayout(validation.nodes, validation.links, this.theme(), orientation);
   });
 
+  /**
+   * The element the pointer is currently over, or `null`. Seeds the UC-2 chain
+   * trace; its flow thread (ancestors + descendants) stays lit, the rest dims.
+   */
+  private readonly hovered = signal<ChainSeed | null>(null);
+
+  /**
+   * The nodes and links that belong to the hovered element's chain, or `null`
+   * when nothing is hovered. Recomputed only when the hovered element or the
+   * layout changes.
+   */
+  private readonly activeChain = computed<Chain | null>(() => {
+    const view = this.layout();
+    const seed = this.hovered();
+    if (!view || !seed) return null;
+    return collectChain(seed, view.links);
+  });
+
+  /**
+   * Nodes decorated with their current dim state. A node dims only when a chain
+   * is hovered and the node is not part of it — so hovering an element whose
+   * chain spans the whole diagram dims nothing (UC-2 extension 1.a).
+   */
+  protected readonly renderNodes = computed<readonly RenderNode[]>(() => {
+    const view = this.layout();
+    if (!view) return [];
+    const chain = this.activeChain();
+    return view.nodes.map((node) => ({
+      ...node,
+      dimmed: chain !== null && !chain.nodeIds.has(node.id),
+    }));
+  });
+
+  /** Links decorated with their current dim state (see {@link renderNodes}). */
+  protected readonly renderLinks = computed<readonly RenderLink[]>(() => {
+    const view = this.layout();
+    if (!view) return [];
+    const chain = this.activeChain();
+    return view.links.map((link) => ({
+      ...link,
+      dimmed: chain !== null && !chain.linkIds.has(link.id),
+    }));
+  });
+
   /** One-line accessible summary of the flows for the SVG `<desc>`. */
   protected readonly summary = computed(() => {
     const layout = this.layout();
@@ -87,6 +150,32 @@ export class AllomoneySankeyDiagram {
     const linkCount = layout.links.length;
     return `Sankey diagram with ${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'} and ${linkCount} ${linkCount === 1 ? 'flow' : 'flows'}.`;
   });
+
+  /**
+   * Highlights the chain of the hovered node (UC-2 main scenario, steps 1–2):
+   * every element outside its flow thread becomes half-transparent.
+   */
+  protected onHoverNode(id: number): void {
+    this.hovered.set({ kind: 'node', id });
+  }
+
+  /** Highlights the chain of the hovered link ribbon or its value label. */
+  protected onHoverLink(link: LayoutLink): void {
+    this.hovered.set({
+      kind: 'link',
+      id: link.id,
+      source: link.source,
+      target: link.target,
+    });
+  }
+
+  /**
+   * Clears the highlight when the pointer leaves an element (UC-2 steps 3–4):
+   * the translucency added on hover is removed.
+   */
+  protected onLeave(): void {
+    this.hovered.set(null);
+  }
 
   constructor() {
     // Minimal guarantee: log every rejected node/link so consumers can debug
