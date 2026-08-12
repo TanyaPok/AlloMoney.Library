@@ -16,7 +16,7 @@ export class App {
      * has no name (falls back to its id) and no value (derived from links);
      * nodes 0 and 3 carry an explicit "total deposit".
      */
-    protected readonly data = signal<SankeyData | undefined>({
+    protected readonly data = signal<SankeyData | null | undefined>({
         nodes: [
             {id: 0, name: 'Account 0', value: 10.0},
             {id: 1, name: 'Account 1'},

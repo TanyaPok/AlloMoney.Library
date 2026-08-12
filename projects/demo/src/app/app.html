@@ -2,19 +2,33 @@
   <h1>{{ title() }}</h1>
   <p class="demo__hint">
     Both cards render the UC-1 reference payload as a value-proportional Sankey
-    diagram — light and dark themes from the same data, zero consumer config.
-    Hover a node or flow to highlight its chain and dim the rest (UC-2).
+    diagram — light and dark themes from the same shared data, zero consumer
+    config. Hover a node or flow to highlight its chain and dim the rest (UC-2).
+    Double-click a node (or press Enter/F2 when it is focused) to edit its name
+    and value in place — changes flow back through the two-way
+    <code>[(dataSource)]</code> binding and update both cards (UC-3).
   </p>
 
   <section class="demo__grid">
     <article class="demo__card demo__card--light">
       <h2>Light theme</h2>
-      <allomoney-sankey-diagram />
+      <allomoney-sankey-diagram
+        [dataSource]="data()"
+        (dataSourceChange)="data.set($event)"
+        [canEditNodeName]="true"
+        [canEditNodeValue]="true"
+      />
     </article>
 
     <article class="demo__card demo__card--dark">
       <h2>Dark theme</h2>
-      <allomoney-sankey-diagram [dataSource]="data()" theme="dark" />
+      <allomoney-sankey-diagram
+        [dataSource]="data()"
+        (dataSourceChange)="data.set($event)"
+        theme="dark"
+        [canEditNodeName]="true"
+        [canEditNodeValue]="true"
+      />
     </article>
   </section>
 </main>

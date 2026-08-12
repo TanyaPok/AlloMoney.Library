@@ -1,11 +1,15 @@
 import {
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
   input,
+  model,
   signal,
+  viewChild,
 } from '@angular/core';
 import { ALLOMONEY_LIBRARY_CONFIG } from '../config/allomoney-library-config';
 import type { SankeyData, SankeyTheme } from './models/sankey-data';
@@ -22,12 +26,37 @@ import { validateSankeyData } from './internal/validate-sankey-data';
 interface RenderNode extends LayoutNode {
   /** `true` when a chain is hovered and this node is outside it. */
   readonly dimmed: boolean;
+  /** Accessible name for the node's editable `button`, precomputed. */
+  readonly editLabel: string;
 }
 
 /** A link paired with its current hover-dim state. */
 interface RenderLink extends LayoutLink {
   /** `true` when a chain is hovered and this link is outside it. */
   readonly dimmed: boolean;
+}
+
+/** Which node is being edited, the seed values, and any validation error. */
+interface EditDraft {
+  /** {@link SankeyNode.id} of the node under edit. */
+  readonly nodeId: number;
+  /** Initial name shown in the input (empty when the node had no name). */
+  readonly seedName: string;
+  /** Initial value shown in the input (empty when the node had no explicit value). */
+  readonly seedValue: string;
+  /** Validation message to show, or `null` while the draft is clean. */
+  readonly error: string | null;
+}
+
+/** The edit overlay's placed geometry plus its current draft/error state. */
+interface EditView {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly seedName: string;
+  readonly seedValue: string;
+  readonly error: string | null;
 }
 
 /** Monotonic id source so each instance gets unique `aria` target ids. */
@@ -71,14 +100,35 @@ export class AllomoneySankeyDiagram {
   /**
    * The diagram data. When it is an Empty State or every
    * node is invalid, the themed empty state is shown instead of a diagram.
+   *
+   * A two-way binding `model` : editing a node in place writes an
+   * immutable copy back through it, so a `[(dataSource)]` binding (or an
+   * explicit `(dataSourceChange)`) keeps the consumer's data in sync.
    */
-  readonly dataSource = input<SankeyData | undefined | null>(undefined);
+  readonly dataSource = model<SankeyData | undefined | null>(undefined);
 
   /**
    * Visual theme. Falls back to the library-wide `defaultTheme` configured via
    * `provideAlloMoneyLibrary()` when not set on the element.
    */
   readonly theme = input<SankeyTheme>(this.config.defaultTheme);
+
+  /**
+   * When `true`, a user may edit each node's name by double-clicking it
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditNodeName = input(false, { transform: booleanAttribute });
+
+  /**
+   * When `true`, a user may edit each node's value by double-clicking it
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditNodeValue = input(false, { transform: booleanAttribute });
+
+  /** `true` when at least one node element is editable (UC-3 extension 1.a). */
+  protected readonly editingEnabled = computed(
+    () => this.canEditNodeName() || this.canEditNodeValue(),
+  );
 
   private readonly validation = computed(() => validateSankeyData(this.dataSource()));
 
@@ -133,6 +183,9 @@ export class AllomoneySankeyDiagram {
     return view.nodes.map((node) => ({
       ...node,
       dimmed: chain !== null && !chain.nodeIds.has(node.id),
+      editLabel: node.valueLabel
+        ? `Edit node ${node.label}, value ${node.valueLabel}`
+        : `Edit node ${node.label}`,
     }));
   });
 
@@ -182,6 +235,126 @@ export class AllomoneySankeyDiagram {
     this.hovered.set(null);
   }
 
+  // --- edit a node in place ----------------------------------------
+
+  /** The node currently being edited (UC-3), or `null` when no edit is open. */
+  private readonly editState = signal<EditDraft | null>(null);
+
+  /** Live `<input>` handles for reading the entered name/value at commit time. */
+  private readonly nameInputRef = viewChild<ElementRef<HTMLInputElement>>('nameInput');
+  private readonly valueInputRef = viewChild<ElementRef<HTMLInputElement>>('valueInput');
+
+  /**
+   * Just the edited node id — changes only when a different node is opened (not
+   * on every keystroke/error), so the auto-focus effect fires exactly once.
+   */
+  private readonly editingNodeId = computed(() => this.editState()?.nodeId ?? null);
+
+  /**
+   * The placed edit overlay, or `null` when no edit is open. Centered over the
+   * edited node and clamped inside the viewBox so it never spills off-canvas.
+   */
+  protected readonly editView = computed<EditView | null>(() => {
+    const edit = this.editState();
+    const view = this.layout();
+    if (!edit || !view) return null;
+    const node = view.nodes.find((n) => n.id === edit.nodeId);
+    if (!node) return null;
+
+    const rows = (this.canEditNodeName() ? 1 : 0) + (this.canEditNodeValue() ? 1 : 0);
+    const width = 220;
+    const height = 78 + rows * 56 + (edit.error ? 30 : 0);
+    const cx = node.x + node.width / 2;
+    const cy = node.y + node.height / 2;
+    const x = Math.max(0, Math.min(cx - width / 2, view.width - width));
+    const y = Math.max(0, Math.min(cy - height / 2, view.height - height));
+
+    return { x, y, width, height, seedName: edit.seedName, seedValue: edit.seedValue, error: edit.error };
+  });
+
+  /**
+   * Opens the edit overlay for a node (UC-3 trigger: double-click). No-op when
+   * neither element is editable (extension 1.a). Seeds the inputs from the raw
+   * consumer data — not the derived/formatted labels — so cleared fields mean
+   * "unset" rather than the id fallback or a summed value.
+   */
+  protected startEdit(nodeId: number): void {
+    if (!this.editingEnabled()) return;
+    const node = this.dataSource()?.nodes.find((n) => n?.id === nodeId);
+    this.editState.set({
+      nodeId,
+      seedName: node && typeof node.name === 'string' ? node.name : '',
+      seedValue: node && node.value != null ? String(node.value) : '',
+      error: null,
+    });
+  }
+
+  /**
+   * Validates the entered data (UC-3 step 3, business rule 2) and, when valid,
+   * writes an immutable copy back through {@link dataSource} and closes the
+   * overlay (step 3.1). On failure it keeps the overlay open and shows the error
+   * (extension 3.a). Only fields the user is permitted to edit are touched.
+   */
+  protected commitEdit(): void {
+    const edit = this.editState();
+    const data = this.dataSource();
+    if (!edit || !data) {
+      this.editState.set(null);
+      return;
+    }
+
+    // Business rule 2: value must be a positive number, or null/undefined.
+    let nextValue: number | null = null;
+    if (this.canEditNodeValue()) {
+      const raw = (this.valueInputRef()?.nativeElement.value ?? '').trim();
+      if (raw.length > 0) {
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          this.editState.set({ ...edit, error: 'Value must be a positive number.' });
+          return;
+        }
+        nextValue = parsed;
+      }
+    }
+
+    // Business rule 2: name must be a string (or null/undefined). An <input>
+    // only yields a string, so an empty field becomes null ("unset").
+    let nextName: string | null = null;
+    if (this.canEditNodeName()) {
+      const raw = (this.nameInputRef()?.nativeElement.value ?? '').trim();
+      nextName = raw.length > 0 ? raw : null;
+    }
+
+    const nodes = data.nodes.map((node) => {
+      if (!node || node.id !== edit.nodeId) return node;
+      return {
+        ...node,
+        ...(this.canEditNodeName() ? { name: nextName } : {}),
+        ...(this.canEditNodeValue() ? { value: nextValue } : {}),
+      };
+    });
+
+    this.dataSource.set({ ...data, nodes });
+    this.editState.set(null);
+  }
+
+  /** Discards the edit and closes the overlay (UC-3 extension 3.a.1.a: Esc/Cancel). */
+  protected cancelEdit(): void {
+    this.editState.set(null);
+  }
+
+  /**
+   * Commits when focus leaves the whole overlay — i.e. the user "clicks outside
+   * the editable area" (UC-3 step 2). Focus moving between the overlay's own
+   * controls (a field, Save, Cancel) is ignored so those keep their own intent.
+   */
+  protected onEditFocusOut(event: FocusEvent): void {
+    const container = event.currentTarget as HTMLElement;
+    const next = event.relatedTarget as Node | null;
+    if (next && container.contains(next)) return;
+    this.commitEdit();
+  }
+
   constructor() {
     // Minimal guarantee: log every rejected node/link so consumers can debug
     // invalid data (main-scenario extension 1.1.b.2). Runs on each change.
@@ -189,6 +362,17 @@ export class AllomoneySankeyDiagram {
       for (const message of this.validation().errors) {
         console.error(`[allomoney-sankey-diagram] ${message}`);
       }
+    });
+
+    // Move keyboard focus into the overlay when an edit opens, so keyboard users
+    // land in the first editable field (UC-3 accessibility).
+    effect(() => {
+      if (this.editingNodeId() === null) return;
+      queueMicrotask(() => {
+        const el = this.nameInputRef()?.nativeElement ?? this.valueInputRef()?.nativeElement;
+        el?.focus();
+        el?.select();
+      });
     });
   }
 }

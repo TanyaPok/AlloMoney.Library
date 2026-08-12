@@ -13,6 +13,13 @@
   --allomoney-label-size: 14px;
   --allomoney-value-size: 15px;
 
+  // UC-3 edit overlay theming (runtime-overridable like the others).
+  --allomoney-edit-bg: #ffffff;
+  --allomoney-edit-fg: #1a2233;
+  --allomoney-edit-border: #b7c0d0;
+  --allomoney-edit-accent: #1f5fd6;
+  --allomoney-edit-error: #b00020;
+
   display: block;
   position: relative;
   inline-size: 100%;
@@ -27,6 +34,12 @@
   --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(255, 255, 255, 0.22);
   --allomoney-link-opacity: 0.5;
+
+  --allomoney-edit-bg: #232a38;
+  --allomoney-edit-fg: #e6ecf7;
+  --allomoney-edit-border: #4a566e;
+  --allomoney-edit-accent: #1f5fd6;
+  --allomoney-edit-error: #ff8a9a;
 }
 
 // --- Empty state ----------------------------------
@@ -93,6 +106,21 @@
   opacity: var(--allomoney-dim-opacity);
 }
 
+// UC-3: editable nodes advertise interactivity and expose a visible focus ring
+// for keyboard users (double-click, or Enter/F2 when focused, opens the editor).
+.allomoney-sankey__node--editable {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+
+    .allomoney-sankey__node-rect {
+      stroke: var(--allomoney-edit-accent);
+      stroke-width: 3;
+    }
+  }
+}
+
 .allomoney-sankey__node-rect {
   stroke: var(--allomoney-node-stroke);
   stroke-width: 1;
@@ -128,6 +156,88 @@
   clip: rect(0, 0, 0, 0);
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+// --- UC-3 edit overlay ---------------------------------------------------
+// Rendered inside an SVG <foreignObject>, so these are ordinary HTML controls.
+.allomoney-sankey__edit {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--allomoney-edit-border);
+  border-radius: 8px;
+  background: var(--allomoney-edit-bg);
+  color: var(--allomoney-edit-fg);
+  font-family: var(--allomoney-label-font);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.allomoney-sankey__edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.allomoney-sankey__edit-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.allomoney-sankey__edit-input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--allomoney-edit-border);
+  border-radius: 5px;
+  background: var(--allomoney-edit-bg);
+  color: var(--allomoney-edit-fg);
+  font: inherit;
+  font-size: 13px;
+
+  &:focus-visible {
+    outline: 2px solid var(--allomoney-edit-accent);
+    outline-offset: 1px;
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--allomoney-edit-error);
+  }
+}
+
+.allomoney-sankey__edit-error {
+  margin: 0;
+  color: var(--allomoney-edit-error);
+  font-size: 12px;
+}
+
+.allomoney-sankey__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.allomoney-sankey__edit-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--allomoney-edit-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--allomoney-edit-fg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--allomoney-edit-accent);
+    outline-offset: 1px;
+  }
+}
+
+.allomoney-sankey__edit-btn--primary {
+  border-color: var(--allomoney-edit-accent);
+  background: var(--allomoney-edit-accent);
+  color: #ffffff;
 }
 
 @media (prefers-reduced-motion: reduce) {
