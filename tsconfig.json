@@ -28,13 +28,7 @@
       "path": "./projects/allomoney-library/tsconfig.lib.json"
     },
     {
-      "path": "./projects/allomoney-library/tsconfig.spec.json"
-    },
-    {
       "path": "./projects/demo/tsconfig.app.json"
-    },
-    {
-      "path": "./projects/demo/tsconfig.spec.json"
     }
   ]
 }
