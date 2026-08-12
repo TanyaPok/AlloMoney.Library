@@ -5,10 +5,10 @@ import type { SankeyTheme } from '../models/sankey-data';
  *
  * Uses an OKLCH color with a fixed lightness/chroma per theme and a
  * golden-angle hue rotation so hues spread evenly without clustering. Each
- * index yields a unique color (business rule 2).
+ * index yields a unique color.
  *
  * @param count Number of colors to generate (one per node).
- * @param theme Active theme; brighter/pastel tuning differs per theme.
+ * @param theme Active theme.
  * @returns An array of `count` CSS `oklch(...)` color strings.
  */
 export function generatePalette(count: number, theme: SankeyTheme): string[] {
@@ -19,6 +19,6 @@ export function generatePalette(count: number, theme: SankeyTheme): string[] {
 
   return Array.from(
     { length: Math.max(0, count) },
-    (_, i) => `oklch(${L} ${C} ${(hue0 + i * GOLDEN) % 360})`,
+    (_, i) => `oklch(${L} ${C} ${(hue0 + i * GOLDEN) % 360})`
   );
 }

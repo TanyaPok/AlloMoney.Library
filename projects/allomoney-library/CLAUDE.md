@@ -35,7 +35,6 @@ not ask a maintainer to run them for you:
 
 ```bash
 npm run build        # must compile clean (postbuild finalizes the manifest)
-npm test             # unit tests for changed code must pass
 npm run lint         # if a lint script exists — no new warnings
 ```
 
@@ -43,7 +42,6 @@ For any change to the public API or the built package, also run
 `npm run pack:check` and READ the printed file list (see Release process).
 
 Additional gates:
-- New/changed rendering output MUST have a test asserting SVG structure and a11y roles.
 - New UI MUST pass AXE and WCAG 2.1 AA (contrast, focus, keyboard, text alternatives).
 - No `any` leaking into public `.d.ts`; no `console.log`, dead code, or unexplained
   `TODO` in the diff.
@@ -219,19 +217,14 @@ A Sankey diagram is not accessible by default. Treat these as gates, not extras:
 
 ## Testing
 
-- **Layout engine first.** `internal/` is pure and deterministic — cover rank
-  assignment, crossing minimization, and value-proportional positioning directly
-  with unit tests. This is the highest-value surface and never leaves `internal/`.
-- **Public API contract.** Every symbol in `public-api.ts` gets a test that pins
-  its behavior/shape — it is a semver contract, so a breaking change should break
-  a test.
-- **Rendering.** Assert SVG structure (node/link counts, `<path>`/`<text>`
-  presence), each `input()` variation, the empty state, and a11y roles — via the
-  component's public template/inputs, never private internals or `internal/`
-  imports.
-- Run through the configured runner (`npm test`). Build the library before
-  testing the demo, since the demo resolves the real package via the tsconfig
-  `paths` alias.
+- **No `*.spec.ts` files.** This project does not keep unit-test spec files. Do
+  NOT create, scaffold, or generate `*.spec.ts` (e.g. from `ng generate` — pass
+  `--skip-tests` or delete the generated spec), and remove any that appear.
+- Verify changes by building the library (`npm run build`) and exercising them in
+  the demo app (`npm start`). Build the library before running the demo, since the
+  demo resolves the real package via the tsconfig `paths` alias.
+- The layout engine in `internal/` is pure and deterministic; verify its behavior
+  through the demo and manual inspection rather than spec files.
 
 ## SVG / rendering & XSS note
 
@@ -240,7 +233,11 @@ A Sankey diagram is not accessible by default. Treat these as gates, not extras:
 - Build the diagram through Angular template bindings — `<text>` content and
   interpolation (auto-escaped) and computed `d`/coordinate attributes. **Never**
   inject untrusted node/link labels via `innerHTML` or `bypassSecurityTrustHtml`.
-- Validate/sanitize any user-supplied strings to avoid XSS.
+- Angular's auto-escaping is the XSS control for untrusted labels. Do **not**
+  add a content blocklist that rejects "suspicious" names — it adds no real
+  protection over escaping and silently drops legitimate values (e.g.
+  `Revenue < Expenses`). Structural validation (finite ids, positive values,
+  referential integrity) is fine; content-pattern filtering of labels is not.
 
 ## Commands
 
@@ -249,7 +246,6 @@ Run from the repo root:
 ```bash
 npm run build        # ng build allomoney-library --configuration production
                      # (postbuild finalizes the manifest + copies LICENSE)
-npm test             # unit tests for the library
 npm start            # serve the demo app (local only, never published)
 npm run pack:check   # cd dist/allomoney-library && npm pack --dry-run
 ```

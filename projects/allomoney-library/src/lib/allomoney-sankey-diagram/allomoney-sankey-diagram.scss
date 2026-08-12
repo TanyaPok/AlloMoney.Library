@@ -1,7 +1,7 @@
 :host {
   // Public theming contract: consumers may override these --allomoney-*
   // custom properties at runtime (no rebuild) to restyle the diagram. Renaming
-  // one is a breaking change. Light theme is the default (business rule 1).
+  // one is a breaking change. Light theme is the default.
   --allomoney-label-color: #1a2233;
   --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(0, 0, 0, 0.18);
@@ -29,7 +29,7 @@
   --allomoney-link-opacity: 0.5;
 }
 
-// --- Empty state (business rules 4 & 5) ----------------------------------
+// --- Empty state ----------------------------------
 .allomoney-sankey__empty {
   display: flex;
   flex-direction: column;
