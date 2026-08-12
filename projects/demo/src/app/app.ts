@@ -31,5 +31,7 @@ export class App {
             {source: 2, target: 4, value: 10},
             {source: 3, target: 4, value: 4}
         ],
+        currency: 'JPY',
+        //orientation: 'vertical'
     });
 }

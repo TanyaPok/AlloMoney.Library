@@ -1,6 +1,4 @@
 /**
- * Chain tracing for UC-2 ("Hovering Over a Sankey Diagram Element").
- *
  * The "chain" of a hovered element is the directed flow thread it belongs to:
  * everything upstream that feeds into it (its ancestors) plus everything
  * downstream it feeds (its descendants), following link direction. Sibling

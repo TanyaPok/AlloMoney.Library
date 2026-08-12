@@ -240,7 +240,11 @@ A Sankey diagram is not accessible by default. Treat these as gates, not extras:
 - Build the diagram through Angular template bindings — `<text>` content and
   interpolation (auto-escaped) and computed `d`/coordinate attributes. **Never**
   inject untrusted node/link labels via `innerHTML` or `bypassSecurityTrustHtml`.
-- Validate/sanitize any user-supplied strings to avoid XSS.
+- Angular's auto-escaping is the XSS control for untrusted labels. Do **not**
+  add a content blocklist that rejects "suspicious" names — it adds no real
+  protection over escaping and silently drops legitimate values (e.g.
+  `Revenue < Expenses`). Structural validation (finite ids, positive values,
+  referential integrity) is fine; content-pattern filtering of labels is not.
 
 ## Commands
 

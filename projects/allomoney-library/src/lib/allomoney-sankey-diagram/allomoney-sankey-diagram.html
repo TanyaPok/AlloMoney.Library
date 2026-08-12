@@ -1,7 +1,4 @@
 @if (isEmpty()) {
-  <!-- Themed empty state (business rules 4 & 5). The illustration is a CSS
-       background-image (inlined as a data-URI at build time) chosen by the
-       host [data-theme]; the message is real text for screen readers. -->
   <div
     class="allomoney-sankey__empty"
     role="status"
@@ -24,7 +21,7 @@
 
     <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
          in the visually-hidden list below. Hovering a ribbon highlights its
-         chain and dims the others (UC-2). -->
+         chain and dims the others. -->
     <g class="allomoney-sankey__links" aria-hidden="true">
       @for (link of renderLinks(); track link.id) {
         <path
@@ -40,7 +37,7 @@
 
     <!-- Nodes + labels. Labels are bound via interpolation (auto-escaped);
          never innerHTML — node/link names are untrusted. Each node group is
-         hoverable and dims when another chain is highlighted (UC-2). -->
+         hoverable and dims when another chain is highlighted. -->
     <g class="allomoney-sankey__nodes" aria-hidden="true">
       @for (node of renderNodes(); track node.id) {
         <g

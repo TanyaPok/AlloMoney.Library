@@ -7,17 +7,19 @@
  */
 
 /**
- * A single node in a Sankey diagram (e.g. an account, category, or entity
- * between which value flows).
+ * A single node in a Sankey diagram (e.g. an account).
  */
 export interface SankeyNode {
   /** Stable, unique identifier used to reference this node from links. */
   readonly id: number;
-  /** Human-readable label. Treat as untrusted: sanitize before rendering. */
+  /**
+   * Human-readable label. Rendered as auto-escaped SVG text (never as HTML),
+   * so any markup in the string is shown literally and cannot execute.
+   */
   readonly name?: string | null;
   /**
-   * Total deposit for this node. When omitted it is derived from the sum of
-   * incoming link values (business rule 2).
+   * Value of the node; total deposit for this node. When omitted it is derived from the sum of
+   * incoming link values.
    */
   readonly value?: number | null;
   /**
@@ -51,11 +53,15 @@ export interface SankeyLink {
 export interface SankeyData {
   readonly nodes: readonly SankeyNode[];
   readonly links: readonly SankeyLink[];
-  /** ISO currency code used when formatting values. Optional. */
+  /**
+   * Optional ISO 4217 currency code. When set, node and link values are
+   * formatted as currency in the host locale (e.g. `"$10.00"`); otherwise a
+   * plain 2-decimal number is shown. An unrecognized code falls back to the
+   * plain format.
+   */
   readonly currency?: string | null;
   /**
-   * Flow direction of the diagram. Defaults to `'horizontal'` (business
-   * rule 1) when omitted.
+   * Flow direction of the diagram. Defaults to `'horizontal'` when omitted.
    */
   readonly orientation?: SankeyOrientation;
 }
@@ -67,7 +73,8 @@ export interface SankeyData {
 export type SankeyTheme = 'light' | 'dark';
 
 /**
- * Direction in which flows are laid out. Only `'horizontal'` is rendered
- * today; `'vertical'` is reserved for a future release.
+ * Direction in which flows are laid out. `'horizontal'` runs flows left→right
+ * with node names to the left; `'vertical'` runs them top→bottom with node
+ * names centered above each node.
  */
 export type SankeyOrientation = 'horizontal' | 'vertical';

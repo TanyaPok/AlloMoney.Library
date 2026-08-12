@@ -186,4 +186,55 @@ describe('computeSankeyLayout (business rule 2)', () => {
     expect(layout.nodes).toHaveLength(1);
     expect(nodeById(layout, 0).rank).toBe(0);
   });
+
+  describe('currency formatting (A3)', () => {
+    it('formats node and link values in the supplied ISO currency', () => {
+      const usd = computeSankeyLayout(REF_NODES, REF_LINKS, 'light', 'horizontal', 'USD');
+      const nodeLabel = nodeById(usd, 0).valueLabel!;
+      const linkLabel = usd.links.find((l) => l.id === '0-2')!.valueLabel;
+      // Locale-robust: assert the amount is present and a currency symbol/code
+      // was added, without hardcoding a locale-specific glyph position.
+      expect(nodeLabel).toMatch(/10[.,]00/);
+      expect(nodeLabel).not.toBe('10.00');
+      expect(linkLabel).toMatch(/5[.,]50/);
+      expect(linkLabel).not.toBe('5.50');
+    });
+
+    it('falls back to plain fixed-2 formatting for an unknown currency code', () => {
+      const layout = computeSankeyLayout(REF_NODES, REF_LINKS, 'light', 'horizontal', 'NOPE');
+      expect(nodeById(layout, 0).valueLabel).toBe('10.00');
+      expect(layout.links.find((l) => l.id === '0-2')!.valueLabel).toBe('5.50');
+    });
+  });
+
+  describe('vertical orientation (A2)', () => {
+    it('transposes the viewBox to portrait and runs flows top-to-bottom', () => {
+      const h = computeSankeyLayout(REF_NODES, REF_LINKS, 'light', 'horizontal');
+      const v = computeSankeyLayout(REF_NODES, REF_LINKS, 'light', 'vertical');
+      // Portrait canvas is the horizontal viewBox transposed.
+      expect(v.width).toBe(h.height);
+      expect(v.height).toBe(h.width);
+      // Later ranks sit further DOWN instead of further right.
+      expect(nodeById(v, 0).y).toBeLessThan(nodeById(v, 2).y);
+      expect(nodeById(v, 2).y).toBeLessThan(nodeById(v, 4).y);
+    });
+
+    it('centers node names above each node (labelAnchor becomes "middle")', () => {
+      const v = computeSankeyLayout(REF_NODES, REF_LINKS, 'light', 'vertical');
+      for (const node of v.nodes) {
+        expect(node.labelAnchor).toBe('middle');
+        expect(node.labelY).toBeLessThan(node.y); // above the node
+        expect(node.labelX).toBeCloseTo(node.x + node.width / 2, 6); // horizontally centered
+      }
+    });
+
+    it('still emits one closed ribbon path per link', () => {
+      const v = computeSankeyLayout(REF_NODES, REF_LINKS, 'light', 'vertical');
+      expect(v.links).toHaveLength(5);
+      for (const link of v.links) {
+        expect(link.path.startsWith('M')).toBe(true);
+        expect(link.path.endsWith('Z')).toBe(true);
+      }
+    });
+  });
 });

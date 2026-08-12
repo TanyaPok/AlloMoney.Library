@@ -64,8 +64,8 @@ export interface LayoutOptions {
   readonly minThickness: number;
   /**
    * Minimum vertical distance (center-to-center, user units) between two link
-   * value labels that share a horizontal band, so they never overlap
-   * (business rule 2). Should be at least the value label's line height.
+   * value labels that share a horizontal band, so they never overlap.
+   * Should be at least the value label's line height.
    */
   readonly minLabelGap: number;
 }
@@ -84,9 +84,24 @@ export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   minLabelGap: 18,
 };
 
-/** Formats a monetary value the same way the reference diagrams do. */
-function formatValue(value: number): string {
-  return value.toFixed(2);
+/**
+ * Builds the value formatter for the diagram. When a non-empty ISO 4217
+ * currency code is supplied, values are formatted as currency in the host
+ * locale via {@link Intl.NumberFormat} (e.g. `"$10.00"`). An unknown code makes
+ * `Intl` throw, so we fall back to a plain fixed-2 number. Dependency-free —
+ * `Intl` is a JavaScript platform built-in.
+ */
+function makeValueFormatter(currency: string | null | undefined): (value: number) => string {
+  const code = typeof currency === 'string' ? currency.trim() : '';
+  if (code.length > 0) {
+    try {
+      const nf = new Intl.NumberFormat(undefined, { style: 'currency', currency: code });
+      return (value) => nf.format(value);
+    } catch {
+      // Unknown/invalid currency code — fall through to plain formatting.
+    }
+  }
+  return (value) => value.toFixed(2);
 }
 
 /** Anything carrying a horizontal band key and a mutable vertical position. */
@@ -197,8 +212,12 @@ function assignRanks(work: readonly WorkNode[], links: readonly ValidLink[], byI
  * @param nodes Validated nodes, in input order.
  * @param links Validated links referencing only valid nodes.
  * @param theme Active theme (drives the generated palette).
- * @param orientation Reserved for future vertical layout; only `horizontal`
- *   is implemented today and other values fall back to it.
+ * @param orientation `'horizontal'` (default) lays flows left→right with node
+ *   names to the left of each node; `'vertical'` lays them top→bottom with names
+ *   centered above each node. Vertical geometry is the horizontal layout
+ *   transposed (every coordinate mirrored across x = y).
+ * @param currency Optional ISO 4217 code; when set, values are formatted as
+ *   currency in the host locale, otherwise as a plain fixed-2 number.
  * @param options Geometry overrides (defaults to {@link DEFAULT_LAYOUT_OPTIONS}).
  */
 export function computeSankeyLayout(
@@ -206,9 +225,11 @@ export function computeSankeyLayout(
   links: readonly ValidLink[],
   theme: SankeyTheme,
   orientation: SankeyOrientation = 'horizontal',
+  currency: string | null = null,
   options: LayoutOptions = DEFAULT_LAYOUT_OPTIONS,
 ): SankeyLayout {
-  void orientation; // horizontal-only for UC-1; kept for API stability.
+  const vertical = orientation === 'vertical';
+  const format = makeValueFormatter(currency);
   const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minThickness, minLabelGap } = options;
 
   const palette = generatePalette(nodes.length, theme);
@@ -332,6 +353,11 @@ export function computeSankeyLayout(
     labelY: number;
   }
 
+  // Serializes a path coordinate, mirroring x↔y for vertical orientation so the
+  // same ribbon math produces a top→bottom ribbon. Horizontal output is
+  // byte-identical to a plain `${x},${y}`.
+  const pt = (px: number, py: number): string => (vertical ? `${py},${px}` : `${px},${py}`);
+
   const geoms: LinkGeom[] = links.map((link) => {
     const source = byId.get(link.source)!;
     const target = byId.get(link.target)!;
@@ -347,13 +373,13 @@ export function computeSankeyLayout(
     const ty1 = ty0 + thickness;
 
     const path =
-      `M${x0},${sy0}` +
-      `C${xm},${sy0} ${xm},${ty0} ${x1},${ty0}` +
-      `L${x1},${ty1}` +
-      `C${xm},${ty1} ${xm},${sy1} ${x0},${sy1}` +
+      `M${pt(x0, sy0)}` +
+      `C${pt(xm, sy0)} ${pt(xm, ty0)} ${pt(x1, ty0)}` +
+      `L${pt(x1, ty1)}` +
+      `C${pt(xm, ty1)} ${pt(xm, sy1)} ${pt(x0, sy1)}` +
       'Z';
 
-    const valueLabel = formatValue(link.value);
+    const valueLabel = format(link.value);
     return {
       link,
       source,
@@ -378,37 +404,47 @@ export function computeSankeyLayout(
     color: geom.link.color ?? geom.source.color,
     thickness: geom.thickness,
     valueLabel: geom.valueLabel,
-    labelX: geom.labelX,
-    labelY: geom.labelY,
+    labelX: vertical ? geom.labelY : geom.labelX,
+    labelY: vertical ? geom.labelX : geom.labelY,
     a11yLabel: geom.a11yLabel,
   }));
 
   // --- 7. Node geometry + labels -----------------------------------------
-  // Business rule 2: for horizontal orientation every node's name/id sits on
-  // the LEFT side of the node, vertically centered — the same placement for all
-  // ranks (see the reference diagrams). Vertical orientation (label at the top
-  // of the node) is reserved for a future release; UC-1 renders horizontal only.
+  // Business rule 2: for horizontal orientation every node's name/id sits on the
+  // LEFT side of the node, vertically centered — the same placement for all ranks
+  // (see the reference diagrams). For vertical orientation we transpose every
+  // coordinate (x↔y): the left-of-node name becomes a centered above-node label,
+  // so only the text anchor changes ('end' → 'middle').
   const layoutNodes: LayoutNode[] = work.map((w) => {
-    const labelAnchor: 'start' | 'middle' | 'end' = 'end';
-    const labelX = w.x - labelGap;
-    const labelY = w.y + w.height / 2;
+    const canonLabelX = w.x - labelGap; // canonical: just left of the node
+    const canonLabelY = w.y + w.height / 2; // canonical: vertical center
+    const x = vertical ? w.y : w.x;
+    const y = vertical ? w.x : w.y;
+    const nodeW = vertical ? w.height : nodeWidth;
+    const nodeH = vertical ? nodeWidth : w.height;
     return {
       id: w.node.id,
       label: w.node.label,
-      valueLabel: w.node.value != null ? formatValue(w.node.value) : null,
-      x: w.x,
-      y: w.y,
-      width: nodeWidth,
-      height: w.height,
+      valueLabel: w.node.value != null ? format(w.node.value) : null,
+      x,
+      y,
+      width: nodeW,
+      height: nodeH,
       color: w.color,
       rank: w.rank,
-      labelX,
-      labelY,
-      labelAnchor,
-      valueX: w.x + nodeWidth / 2,
-      valueY: w.y + w.height / 2,
+      labelX: vertical ? canonLabelY : canonLabelX,
+      labelY: vertical ? canonLabelX : canonLabelY,
+      labelAnchor: vertical ? 'middle' : 'end',
+      valueX: x + nodeW / 2,
+      valueY: y + nodeH / 2,
     };
   });
 
-  return { width, height, nodes: layoutNodes, links: layoutLinks };
+  // Vertical swaps the canvas to portrait (the horizontal viewBox transposed).
+  return {
+    width: vertical ? height : width,
+    height: vertical ? width : height,
+    nodes: layoutNodes,
+    links: layoutLinks,
+  };
 }

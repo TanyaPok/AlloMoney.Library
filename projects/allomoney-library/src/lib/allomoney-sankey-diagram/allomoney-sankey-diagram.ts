@@ -18,13 +18,13 @@ import {
 import { collectChain, type Chain, type ChainSeed } from './internal/sankey-chain';
 import { validateSankeyData } from './internal/validate-sankey-data';
 
-/** A node paired with its current hover-dim state (UC-2). */
+/** A node paired with its current hover-dim state. */
 interface RenderNode extends LayoutNode {
   /** `true` when a chain is hovered and this node is outside it. */
   readonly dimmed: boolean;
 }
 
-/** A link paired with its current hover-dim state (UC-2). */
+/** A link paired with its current hover-dim state. */
 interface RenderLink extends LayoutLink {
   /** `true` when a chain is hovered and this link is outside it. */
   readonly dimmed: boolean;
@@ -34,13 +34,12 @@ interface RenderLink extends LayoutLink {
 let uidCounter = 0;
 
 /**
- * Zero-dependency Sankey diagram component (UC-1: "Show Sankey Diagram By
- * Default").
+ * Zero-dependency Sankey diagram component.
  *
  * Standalone, signal-based, and OnPush. Given a {@link SankeyData} payload in
- * {@link dataSource} it validates the data (business rule 3), then renders a
- * native-SVG, value-proportional Sankey diagram (business rule 2). Empty or
- * fully-invalid data falls back to the themed placeholder (business rules 4/5),
+ * {@link dataSource} it validates the data, then renders a
+ * native-SVG, value-proportional Sankey diagram. Empty or
+ * fully-invalid data falls back to the themed placeholder,
  * and every rejected node/link is logged to the console.
  *
  * @example
@@ -70,10 +69,10 @@ export class AllomoneySankeyDiagram {
   protected readonly descId = `allomoney-sankey-desc-${this.uid}`;
 
   /**
-   * The diagram data. When it is an Empty State (business rule 5) or every
+   * The diagram data. When it is an Empty State or every
    * node is invalid, the themed empty state is shown instead of a diagram.
    */
-  readonly dataSource = input<SankeyData | undefined>(undefined);
+  readonly dataSource = input<SankeyData | undefined | null>(undefined);
 
   /**
    * Visual theme. Falls back to the library-wide `defaultTheme` configured via
@@ -81,7 +80,6 @@ export class AllomoneySankeyDiagram {
    */
   readonly theme = input<SankeyTheme>(this.config.defaultTheme);
 
-  /** Validation outcome for the current `dataSource` (business rules 3 & 5). */
   private readonly validation = computed(() => validateSankeyData(this.dataSource()));
 
   /** `true` when the placeholder must be shown (empty or all-invalid). */
@@ -89,13 +87,20 @@ export class AllomoneySankeyDiagram {
 
   /**
    * The computed render geometry, or `null` while the empty state is shown.
-   * Orientation defaults to `'horizontal'` per business rule 1.
+   * Orientation defaults to `'horizontal'`.
    */
   protected readonly layout = computed<SankeyLayout | null>(() => {
     const validation = this.validation();
     if (validation.isEmptyState) return null;
-    const orientation = this.dataSource()?.orientation ?? 'horizontal';
-    return computeSankeyLayout(validation.nodes, validation.links, this.theme(), orientation);
+    const data = this.dataSource();
+    const orientation = data?.orientation ?? 'horizontal';
+    return computeSankeyLayout(
+      validation.nodes,
+      validation.links,
+      this.theme(),
+      orientation,
+      data?.currency ?? null,
+    );
   });
 
   /**

@@ -116,6 +116,29 @@ describe('AllomoneySankeyDiagram', () => {
       ).map((n) => n.textContent);
       expect(values).toEqual(['10.00', '10.00']);
     });
+
+    it('formats values using the data currency (A3)', async () => {
+      await setup();
+      fixture.componentRef.setInput('dataSource', { ...REFERENCE_DATA, currency: 'USD' });
+      fixture.detectChanges();
+      const values = Array.from(
+        el().querySelectorAll('.allomoney-sankey__node-value'),
+      ).map((n) => n.textContent!);
+      expect(values.every((v) => /10[.,]00/.test(v))).toBe(true);
+      expect(values.some((v) => v !== '10.00')).toBe(true); // currency symbol added
+    });
+
+    it('renders a portrait viewBox when orientation is vertical (A2)', async () => {
+      await setup();
+      fixture.componentRef.setInput('dataSource', { ...REFERENCE_DATA, orientation: 'vertical' });
+      fixture.detectChanges();
+      const [, , w, h] = el()
+        .querySelector('svg')!
+        .getAttribute('viewBox')!
+        .split(' ')
+        .map(Number);
+      expect(h).toBeGreaterThan(w); // taller than wide
+    });
   });
 
   describe('accessibility', () => {
@@ -203,7 +226,7 @@ describe('AllomoneySankeyDiagram', () => {
       fixture.componentRef.setInput('dataSource', {
         nodes: [
           { id: 0, name: 'ok' },
-          { id: 1, name: '<script>alert(1)</script>' },
+          { id: Number.NaN, name: 'bad id' }, // non-finite id -> node rejected
         ],
         links: [
           { source: 0, target: 1, value: 5 }, // target rejected -> link dropped
@@ -214,6 +237,24 @@ describe('AllomoneySankeyDiagram', () => {
       expect(el().querySelectorAll('.allomoney-sankey__node-rect')).toHaveLength(1);
       expect(el().querySelectorAll('.allomoney-sankey__link')).toHaveLength(0);
       expect(spy).toHaveBeenCalled();
+    });
+
+    it('renders an untrusted node name as escaped text, not live markup', async () => {
+      await setup();
+      fixture.componentRef.setInput('dataSource', {
+        nodes: [
+          { id: 0, name: '<script>alert(1)</script>' },
+          { id: 1, name: 'ok' },
+        ],
+        links: [{ source: 0, target: 1, value: 5 }],
+      } as SankeyData);
+      fixture.detectChanges();
+      const labels = Array.from(
+        el().querySelectorAll('.allomoney-sankey__node-label'),
+      ).map((n) => n.textContent);
+      expect(labels).toContain('<script>alert(1)</script>');
+      // The markup is inert: no real <script> element was injected.
+      expect(el().querySelector('script')).toBeNull();
     });
 
     it('falls back to the placeholder when every node is invalid', async () => {

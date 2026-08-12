@@ -65,17 +65,25 @@ describe('validateSankeyData (business rules 3 & 5)', () => {
       expect(result.nodes.every((n) => n.value === null)).toBe(true);
     });
 
-    it('rejects a node whose name looks malicious', () => {
+    it('keeps names containing markup/reserved characters (escaping is the XSS control)', () => {
+      // The validator no longer runs a content blocklist: labels are rendered
+      // through Angular auto-escaped text, so markup is shown literally and
+      // cannot execute. Dropping them lost legitimate financial labels.
       const result = validateSankeyData({
         nodes: [
           { id: 0, name: '<script>alert(1)</script>' },
-          { id: 1, name: '<img src=x onerror=alert(1)>' },
-          { id: 2, name: 'safe name' },
+          { id: 1, name: 'Revenue < Expenses' },
+          { id: 2, name: 'Learn JavaScript: Basics' },
         ],
         links: [],
       });
-      expect(result.nodes.map((n) => n.id)).toEqual([2]);
-      expect(result.errors.length).toBe(2);
+      expect(result.nodes.map((n) => n.id)).toEqual([0, 1, 2]);
+      expect(result.nodes.map((n) => n.label)).toEqual([
+        '<script>alert(1)</script>',
+        'Revenue < Expenses',
+        'Learn JavaScript: Basics',
+      ]);
+      expect(result.errors).toHaveLength(0);
     });
 
     it('drops duplicate ids, keeping the first', () => {
