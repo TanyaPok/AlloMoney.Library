@@ -241,3 +241,53 @@ hovered element belongs.
 ```
 1.a  There is only one chain and no other elements. The use case is over.
 ```
+
+### UC-3: Edit Sankey Diagram Node
+**Scope:** `@projects/allomoney-library/src/lib/allomoney-sankey-diagram`
+
+**Primary actor:** User double-clicks on Component node or one of its elements (name, value).
+
+**Initial conditions:** Show Sankey Diagram By Default use case is successfully executed, 
+regardless of whether default parameters are used.
+
+**Minimal guarantees:** Component conforms to Initial conditions and logs errors to the browser console, if applicable.
+
+**Success guarantees:** User changed the node and these changes are applied to the data 
+that was provided to the dataSource as [(dataSource)].
+
+**Triggers:** User double-clicks on Component node or one of its elements (name, value).
+
+**Main success scenario:**
+
+```
+1. Component successfully verifies User permission to edit the all node elements using business rule 1.
+1.1. User enters a new node name and value.
+2. User presses ENTER or clicks outside the editable area. Edit mode is still open.
+3. Component successfully verifies entered data (business rule 2).
+3.1. Component applies the entered data to dataSource and to the data that was provided 
+to the dataSource as [(dataSource)]. Edit mode is closed.
+```
+
+**Extensions:**
+
+```
+1.a (failure) User cannot edit both name and value of the node. The use case is over.
+1.b User cannot edit name of the node.
+1.b.1 User enters value of the node.
+1.c User cannot edit value of the node.
+1.c.1 User enters name of the node.
+3.a. Component verifies entered data and show validation error to User.
+3.a.1.a User clicks Cancel or Esc. Edit mode closes. The use case is over.
+3.a.1.b User makes correct changes. Step 3 from the main success scenario executes.
+```
+
+**Business rules:**
+
+**1. CanEdit component properties**
+
+- if `CanEditNodeName` is true than node[i].name can be edited by User
+- if `CanEditNodeValue` is true than node[i].value can be edited by User
+
+**2. Node elements validation rules**
+- name must be string, null or undefined type
+- value must be positive number, null or undefined

@@ -1,102 +1,155 @@
 @if (isEmpty()) {
-  <div
-    class="allomoney-sankey__empty"
-    role="status"
-    aria-live="polite"
-    aria-label="No flows to display yet"
-  >
-    <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
-  </div>
+    <div class="allomoney-sankey__empty"
+         role="status"
+         aria-live="polite"
+         aria-label="No flows to display yet">
+        <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
+    </div>
 } @else {
-  @let view = layout()!;
-  <svg
-    class="allomoney-sankey__canvas"
-    [attr.viewBox]="'0 0 ' + view.width + ' ' + view.height"
-    preserveAspectRatio="xMidYMid meet"
-    role="img"
-    [attr.aria-labelledby]="titleId + ' ' + descId"
-  >
-    <title [id]="titleId">Sankey diagram of money flows</title>
-    <desc [id]="descId">{{ summary() }}</desc>
+    @let view = layout()!;
+    <svg class="allomoney-sankey__canvas"
+         [attr.viewBox]="'0 0 ' + view.width + ' ' + view.height"
+         preserveAspectRatio="xMidYMid meet"
+         role="img"
+         [attr.aria-labelledby]="titleId + ' ' + descId">
+        <title [id]="titleId">Sankey diagram of money flows</title>
+        <desc [id]="descId">{{ summary() }}</desc>
 
-    <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
-         in the visually-hidden list below. Hovering a ribbon highlights its
-         chain and dims the others. -->
-    <g class="allomoney-sankey__links" aria-hidden="true">
-      @for (link of renderLinks(); track link.id) {
-        <path
-          class="allomoney-sankey__link"
-          [class.allomoney-sankey--dim]="link.dimmed"
-          [attr.d]="link.path"
-          [style.fill]="link.color"
-          (pointerenter)="onHoverLink(link)"
-          (pointerleave)="onLeave()"
-        />
-      }
-    </g>
-
-    <!-- Nodes + labels. Labels are bound via interpolation (auto-escaped);
-         never innerHTML — node/link names are untrusted. Each node group is
-         hoverable and dims when another chain is highlighted. -->
-    <g class="allomoney-sankey__nodes" aria-hidden="true">
-      @for (node of renderNodes(); track node.id) {
-        <g
-          class="allomoney-sankey__node"
-          [class.allomoney-sankey--dim]="node.dimmed"
-          (pointerenter)="onHoverNode(node.id)"
-          (pointerleave)="onLeave()"
-        >
-          <rect
-            class="allomoney-sankey__node-rect"
-            [attr.x]="node.x"
-            [attr.y]="node.y"
-            [attr.width]="node.width"
-            [attr.height]="node.height"
-            rx="3"
-            [style.fill]="node.color"
-          />
-          <text
-            class="allomoney-sankey__node-label"
-            [attr.x]="node.labelX"
-            [attr.y]="node.labelY"
-            [attr.text-anchor]="node.labelAnchor"
-            dominant-baseline="middle"
-          >{{ node.label }}</text>
-          @if (node.valueLabel !== null) {
-            <text
-              class="allomoney-sankey__node-value"
-              [attr.x]="node.valueX"
-              [attr.y]="node.valueY"
-              text-anchor="middle"
-              dominant-baseline="middle"
-            >{{ node.valueLabel }}</text>
-          }
+        <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
+             in the visually-hidden list below. Hovering a ribbon highlights its
+             chain and dims the others. -->
+        <g class="allomoney-sankey__links" aria-hidden="true">
+            @for (link of renderLinks(); track link.id) {
+                <path class="allomoney-sankey__link"
+                      [class.allomoney-sankey--dim]="link.dimmed"
+                      [attr.d]="link.path"
+                      [style.fill]="link.color"
+                      (pointerenter)="onHoverLink(link)"
+                      (pointerleave)="onLeave()"/>
+            }
         </g>
-      }
-    </g>
 
-    <!-- Per-flow value labels, drawn on top of the ribbons. -->
-    <g class="allomoney-sankey__link-labels" aria-hidden="true">
-      @for (link of renderLinks(); track link.id) {
-        <text
-          class="allomoney-sankey__link-value"
-          [class.allomoney-sankey--dim]="link.dimmed"
-          [attr.x]="link.labelX"
-          [attr.y]="link.labelY"
-          text-anchor="middle"
-          dominant-baseline="middle"
-          (pointerenter)="onHoverLink(link)"
-          (pointerleave)="onLeave()"
-        >{{ link.valueLabel }}</text>
-      }
-    </g>
-  </svg>
+        <!-- Nodes + labels. Labels are bound via interpolation (auto-escaped);
+             never innerHTML — node/link names are untrusted. Each node group is
+             hoverable and dims when another chain is highlighted. When editing is
+             enabled the group becomes a keyboard-operable button and is no
+             longer hidden from assistive tech. -->
+        <g class="allomoney-sankey__nodes"
+           [attr.aria-hidden]="editingEnabled() ? null : true">
+            @for (node of renderNodes(); track node.id) {
+                <g class="allomoney-sankey__node"
+                   [class.allomoney-sankey--dim]="node.dimmed"
+                   [class.allomoney-sankey__node--editable]="editingEnabled()"
+                   [attr.role]="editingEnabled() ? 'button' : null"
+                   [attr.tabindex]="editingEnabled() ? 0 : null"
+                   [attr.aria-label]="editingEnabled() ? node.editLabel : null"
+                   (pointerenter)="onHoverNode(node.id)"
+                   (pointerleave)="onLeave()"
+                   (dblclick)="startEdit(node.id)"
+                   (keydown.enter)="startEdit(node.id)"
+                   (keydown.f2)="startEdit(node.id)">
+                    <rect class="allomoney-sankey__node-rect"
+                          [attr.x]="node.x"
+                          [attr.y]="node.y"
+                          [attr.width]="node.width"
+                          [attr.height]="node.height"
+                          rx="3"
+                          [style.fill]="node.color"/>
+                    <text class="allomoney-sankey__node-label"
+                          [attr.x]="node.labelX"
+                          [attr.y]="node.labelY"
+                          [attr.text-anchor]="node.labelAnchor"
+                          dominant-baseline="middle">
+                        {{ node.label }}
+                    </text>
+                    @if (node.valueLabel !== null) {
+                        <text class="allomoney-sankey__node-value"
+                              [attr.x]="node.valueX"
+                              [attr.y]="node.valueY"
+                              text-anchor="middle"
+                              dominant-baseline="middle">
+                            {{ node.valueLabel }}
+                        </text>
+                    }
+                </g>
+            }
+        </g>
 
-  <!-- Text alternative: the flows as a visually-hidden list so information is
-       not conveyed by color/position alone. -->
-  <ul class="allomoney-sankey__sr-only">
-    @for (link of view.links; track link.id) {
-      <li>{{ link.a11yLabel }}</li>
-    }
-  </ul>
+        <!-- Per-flow value labels, drawn on top of the ribbons. -->
+        <g class="allomoney-sankey__link-labels" aria-hidden="true">
+            @for (link of renderLinks(); track link.id) {
+                <text class="allomoney-sankey__link-value"
+                      [class.allomoney-sankey--dim]="link.dimmed"
+                      [attr.x]="link.labelX"
+                      [attr.y]="link.labelY"
+                      text-anchor="middle"
+                      dominant-baseline="middle"
+                      (pointerenter)="onHoverLink(link)"
+                      (pointerleave)="onLeave()">
+                    {{ link.valueLabel }}
+                </text>
+            }
+        </g>
+
+        <!-- Edit overlay: an in-place form drawn over the edited node. Native
+             <input>s inside <foreignObject> keep it keyboard- and AT-accessible.
+             ENTER or focus leaving the overlay commits; Esc/Cancel discards. -->
+        @if (editView(); as edit) {
+            <foreignObject [attr.x]="edit.x"
+                           [attr.y]="edit.y"
+                           [attr.width]="edit.width"
+                           [attr.height]="edit.height">
+                <div class="allomoney-sankey__edit"
+                     role="dialog"
+                     aria-label="Edit node"
+                     (keydown.enter)="commitEdit()"
+                     (keydown.escape)="cancelEdit()"
+                     (focusout)="onEditFocusOut($event)">
+                    @if (canEditNodeName()) {
+                        <label class="allomoney-sankey__edit-field">
+                            <span class="allomoney-sankey__edit-label">Name</span>
+                            <input #nameInput
+                                   class="allomoney-sankey__edit-input"
+                                   type="text"
+                                   [value]="edit.seedName"/>
+                        </label>
+                    }
+                    @if (canEditNodeValue()) {
+                        <label class="allomoney-sankey__edit-field">
+                            <span class="allomoney-sankey__edit-label">Value</span>
+                            <input #valueInput
+                                   class="allomoney-sankey__edit-input"
+                                   type="text"
+                                   inputmode="decimal"
+                                   [value]="edit.seedValue"
+                                   [attr.aria-invalid]="edit.error ? true : null"/>
+                        </label>
+                    }
+                    @if (edit.error) {
+                        <p class="allomoney-sankey__edit-error" role="alert">{{ edit.error }}</p>
+                    }
+                    <div class="allomoney-sankey__edit-actions">
+                        <button type="button"
+                                class="allomoney-sankey__edit-btn allomoney-sankey__edit-btn--primary"
+                                (click)="commitEdit()">
+                            Save
+                        </button>
+                        <button type="button"
+                                class="allomoney-sankey__edit-btn"
+                                (click)="cancelEdit()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </foreignObject>
+        }
+    </svg>
+
+    <!-- Text alternative: the flows as a visually-hidden list so information is
+         not conveyed by color/position alone. -->
+    <ul class="allomoney-sankey__sr-only">
+        @for (link of view.links; track link.id) {
+            <li>{{ link.a11yLabel }}</li>
+        }
+    </ul>
 }
