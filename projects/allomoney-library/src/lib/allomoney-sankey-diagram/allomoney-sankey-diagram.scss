@@ -121,6 +121,19 @@
   }
 }
 
+// UC-4: editable links do the same — pointer cursor plus a visible focus ring on
+// the ribbon (and on its centered value label) when link editing is enabled.
+.allomoney-sankey__link--editable,
+.allomoney-sankey__link-value--editable {
+  cursor: pointer;
+}
+
+.allomoney-sankey__link--editable:focus-visible {
+  outline: none;
+  stroke: var(--allomoney-edit-accent);
+  stroke-width: 2;
+}
+
 .allomoney-sankey__node-rect {
   stroke: var(--allomoney-node-stroke);
   stroke-width: 1;

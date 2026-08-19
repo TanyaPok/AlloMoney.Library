@@ -291,3 +291,56 @@ to the dataSource as [(dataSource)]. Edit mode is closed.
 **2. Node elements validation rules**
 - name must be string, null or undefined type
 - value must be positive number, null or undefined
+
+### UC-4: Edit Sankey Diagram Link
+**Scope:** `@projects/allomoney-library/src/lib/allomoney-sankey-diagram`
+
+**Primary actor:** User double-clicks on Component link.
+
+**Initial conditions:** Show Sankey Diagram By Default use case is successfully executed,
+regardless of whether default parameters are used.
+
+**Minimal guarantees:** Component conforms to Initial conditions and logs errors to the browser console, if applicable.
+
+**Success guarantees:** User changed the link and these changes are applied to the data
+that was provided to the dataSource as [(dataSource)].
+
+**Triggers:** User double-clicks on Component link.
+
+**Main success scenario:**
+
+```
+1. Component successfully verifies User permission to edit the all link elements using business rule 1.
+1.1. User enters a new link value and select source and target from the available nodes (business rule 2).
+2. User presses ENTER or clicks outside the editable area. Edit mode is still open.
+3. Component successfully verifies entered data (business rule 2).
+3.1. Component applies the entered data to dataSource and to the data that was provided 
+to the dataSource as [(dataSource)]. Edit mode is closed.
+```
+
+**Extensions:**
+
+```
+1.a (failure) User cannot edit the link value, source and target (all of them). The use case is over.
+1.b User cannot edit value of the link.
+1.b.1 User selects source and target of the link from the available nodes (business rule 2).
+1.c User cannot edit source of the link.
+1.c.1 User selects target of the link from the available nodes (business rule 3) and enters value of the link.
+3.a. Component verifies entered data and show validation error to User.
+3.a.1.a User clicks Cancel or Esc. Edit mode closes. The use case is over.
+3.a.1.b User makes correct changes. Step 3 from the main success scenario executes.
+```
+
+**Business rules:**
+
+**1. CanEdit component properties**
+
+- if `CanEditLinkValue` is true than link[i].value can be edited by User
+- if `CanEditLinkSource` is true than link[i].source can be edited by User
+- if `CanEditLinkTarget` is true than link[i].target can be edited by User
+
+**2. Link elements validation rules**
+- source must be one of the existing nodes (node[i].id)
+- target must be one of the existing nodes (node[i].id)
+- source must be different from target
+- value must be positive number

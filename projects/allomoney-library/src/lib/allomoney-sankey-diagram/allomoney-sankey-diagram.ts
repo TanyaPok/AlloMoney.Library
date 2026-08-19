@@ -34,29 +34,69 @@ interface RenderNode extends LayoutNode {
 interface RenderLink extends LayoutLink {
   /** `true` when a chain is hovered and this link is outside it. */
   readonly dimmed: boolean;
+  /** Accessible name for the link's editable `button`, precomputed. */
+  readonly editLabel: string;
 }
 
-/** Which node is being edited, the seed values, and any validation error. */
-interface EditDraft {
+/** Fields shared by every in-place edit draft. */
+interface EditDraftBase {
+  /** Validation message to show, or `null` while the draft is clean. */
+  readonly error: string | null;
+}
+
+/** A node edit in progress (UC-3): which node, plus the seed field values. */
+interface NodeEditDraft extends EditDraftBase {
+  readonly kind: 'node';
   /** {@link SankeyNode.id} of the node under edit. */
   readonly nodeId: number;
   /** Initial name shown in the input (empty when the node had no name). */
   readonly seedName: string;
   /** Initial value shown in the input (empty when the node had no explicit value). */
   readonly seedValue: string;
-  /** Validation message to show, or `null` while the draft is clean. */
-  readonly error: string | null;
 }
 
-/** The edit overlay's placed geometry plus its current draft/error state. */
-interface EditView {
+/** A link edit in progress: identified by its original source/target. */
+interface LinkEditDraft extends EditDraftBase {
+  readonly kind: 'link';
+  /** Original source id — identifies the edited link and seeds the source select. */
+  readonly source: number;
+  /** Original target id — identifies the edited link and seeds the target select. */
+  readonly target: number;
+  /** Initial value shown in the input. */
+  readonly seedValue: string;
+}
+
+/** The element being edited in place, or `null` when no edit is open. */
+type EditDraft = NodeEditDraft | LinkEditDraft;
+
+/** A selectable node for the link source/target dropdowns. */
+interface NodeOption {
+  readonly id: number;
+  readonly label: string;
+}
+
+/** Placed geometry common to both edit overlays. */
+interface EditBox {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+/** The node edit overlay: geometry plus its current draft/error state. */
+interface NodeEditView extends EditBox {
   readonly seedName: string;
   readonly seedValue: string;
   readonly error: string | null;
+}
+
+/** The link edit overlay: geometry, seeds, and the selectable nodes. */
+interface LinkEditView extends EditBox {
+  readonly source: number;
+  readonly target: number;
+  readonly seedValue: string;
+  readonly error: string | null;
+  readonly nodes: readonly NodeOption[];
 }
 
 /** Monotonic id source so each instance gets unique `aria` target ids. */
@@ -130,6 +170,26 @@ export class AllomoneySankeyDiagram {
     () => this.canEditNodeName() || this.canEditNodeValue(),
   );
 
+  /**
+   * When `true`, a user may edit each link's value by double-clicking it
+   */
+  readonly canEditLinkValue = input(false, { transform: booleanAttribute });
+
+  /**
+   * When `true`, a user may re-point each link's source to another node
+   */
+  readonly canEditLinkSource = input(false, { transform: booleanAttribute });
+
+  /**
+   * When `true`, a user may re-point each link's target to another node
+   */
+  readonly canEditLinkTarget = input(false, { transform: booleanAttribute });
+
+  /** `true` when at least one link element is editable (UC-4 extension 1.a). */
+  protected readonly linkEditingEnabled = computed(
+    () => this.canEditLinkValue() || this.canEditLinkSource() || this.canEditLinkTarget(),
+  );
+
   private readonly validation = computed(() => validateSankeyData(this.dataSource()));
 
   /** `true` when the placeholder must be shown (empty or all-invalid). */
@@ -197,6 +257,7 @@ export class AllomoneySankeyDiagram {
     return view.links.map((link) => ({
       ...link,
       dimmed: chain !== null && !chain.linkIds.has(link.id),
+      editLabel: `Edit flow ${link.a11yLabel}`,
     }));
   });
 
@@ -235,53 +296,90 @@ export class AllomoneySankeyDiagram {
     this.hovered.set(null);
   }
 
-  // --- edit a node in place ----------------------------------------
+  // --- edit a node (UC-3) or a link (UC-4) in place ----------------------
 
-  /** The node currently being edited (UC-3), or `null` when no edit is open. */
+  /** The element currently being edited, or `null` when no edit is open. */
   private readonly editState = signal<EditDraft | null>(null);
 
-  /** Live `<input>` handles for reading the entered name/value at commit time. */
+  /** Live control handles, read at commit time (uncontrolled inputs). */
   private readonly nameInputRef = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly valueInputRef = viewChild<ElementRef<HTMLInputElement>>('valueInput');
+  private readonly linkValueInputRef = viewChild<ElementRef<HTMLInputElement>>('linkValueInput');
+  private readonly sourceSelectRef = viewChild<ElementRef<HTMLSelectElement>>('sourceSelect');
+  private readonly targetSelectRef = viewChild<ElementRef<HTMLSelectElement>>('targetSelect');
 
   /**
-   * Just the edited node id — changes only when a different node is opened (not
-   * on every keystroke/error), so the auto-focus effect fires exactly once.
+   * A stable key for the open edit — changes only when a different element is
+   * opened (not on every keystroke/error), so the auto-focus effect fires once.
    */
-  private readonly editingNodeId = computed(() => this.editState()?.nodeId ?? null);
+  private readonly editKey = computed(() => {
+    const edit = this.editState();
+    if (!edit) return null;
+    return edit.kind === 'node' ? `n${edit.nodeId}` : `l${edit.source}-${edit.target}`;
+  });
 
   /**
-   * The placed edit overlay, or `null` when no edit is open. Centered over the
-   * edited node and clamped inside the viewBox so it never spills off-canvas.
+   * The placed node edit overlay (UC-3), or `null` unless a node edit is open.
+   * Centered over the edited node and clamped inside the viewBox.
    */
-  protected readonly editView = computed<EditView | null>(() => {
+  protected readonly nodeEditView = computed<NodeEditView | null>(() => {
     const edit = this.editState();
     const view = this.layout();
-    if (!edit || !view) return null;
+    if (!edit || edit.kind !== 'node' || !view) return null;
     const node = view.nodes.find((n) => n.id === edit.nodeId);
     if (!node) return null;
 
     const rows = (this.canEditNodeName() ? 1 : 0) + (this.canEditNodeValue() ? 1 : 0);
-    const width = 220;
-    const height = 78 + rows * 56 + (edit.error ? 30 : 0);
-    const cx = node.x + node.width / 2;
-    const cy = node.y + node.height / 2;
-    const x = Math.max(0, Math.min(cx - width / 2, view.width - width));
-    const y = Math.max(0, Math.min(cy - height / 2, view.height - height));
-
-    return { x, y, width, height, seedName: edit.seedName, seedValue: edit.seedValue, error: edit.error };
+    const box = this.placeBox(node.x + node.width / 2, node.y + node.height / 2, 220, rows, edit.error, view);
+    return { ...box, seedName: edit.seedName, seedValue: edit.seedValue, error: edit.error };
   });
 
   /**
-   * Opens the edit overlay for a node (UC-3 trigger: double-click). No-op when
-   * neither element is editable (extension 1.a). Seeds the inputs from the raw
-   * consumer data — not the derived/formatted labels — so cleared fields mean
+   * The placed link edit overlay (UC-4), or `null` unless a link edit is open.
+   * Centered on the edited link's value label and clamped inside the viewBox.
+   */
+  protected readonly linkEditView = computed<LinkEditView | null>(() => {
+    const edit = this.editState();
+    const view = this.layout();
+    if (!edit || edit.kind !== 'link' || !view) return null;
+    const link = view.links.find((l) => l.source === edit.source && l.target === edit.target);
+    if (!link) return null;
+
+    const rows =
+      (this.canEditLinkValue() ? 1 : 0) +
+      (this.canEditLinkSource() ? 1 : 0) +
+      (this.canEditLinkTarget() ? 1 : 0);
+    const box = this.placeBox(link.labelX, link.labelY, 240, rows, edit.error, view);
+    const nodes = view.nodes.map((n) => ({ id: n.id, label: n.label }));
+    return { ...box, source: edit.source, target: edit.target, seedValue: edit.seedValue, error: edit.error, nodes };
+  });
+
+  /** Centers a `rows`-field overlay on (cx, cy), clamped inside the viewBox. */
+  private placeBox(
+    cx: number,
+    cy: number,
+    width: number,
+    rows: number,
+    error: string | null,
+    view: SankeyLayout,
+  ): EditBox {
+    const height = 78 + rows * 56 + (error ? 30 : 0);
+    const x = Math.max(0, Math.min(cx - width / 2, view.width - width));
+    const y = Math.max(0, Math.min(cy - height / 2, view.height - height));
+    return { x, y, width, height };
+  }
+
+  /**
+   * Opens the node edit overlay (UC-3 trigger: double-click). No-op when neither
+   * node element is editable (extension 1.a). Seeds the inputs from the raw
+   * consumer data — not the derived/formatted labels — so a cleared field means
    * "unset" rather than the id fallback or a summed value.
    */
   protected startEdit(nodeId: number): void {
     if (!this.editingEnabled()) return;
     const node = this.dataSource()?.nodes.find((n) => n?.id === nodeId);
     this.editState.set({
+      kind: 'node',
       nodeId,
       seedName: node && typeof node.name === 'string' ? node.name : '',
       seedValue: node && node.value != null ? String(node.value) : '',
@@ -290,15 +388,38 @@ export class AllomoneySankeyDiagram {
   }
 
   /**
-   * Validates the entered data (UC-3 step 3, business rule 2) and, when valid,
-   * writes an immutable copy back through {@link dataSource} and closes the
-   * overlay (step 3.1). On failure it keeps the overlay open and shows the error
-   * (extension 3.a). Only fields the user is permitted to edit are touched.
+   * Opens the link edit overlay (UC-4 trigger: double-click). No-op when no link
+   * element is editable (extension 1.a). Identified by the link's current
+   * source/target so the right entry is rewritten on commit.
    */
+  protected startLinkEdit(link: LayoutLink): void {
+    if (!this.linkEditingEnabled()) return;
+    this.editState.set({
+      kind: 'link',
+      source: link.source,
+      target: link.target,
+      seedValue: String(link.value),
+      error: null,
+    });
+  }
+
+  /** Dispatches ENTER / Save / click-outside to the matching commit (UC-3/UC-4 step 3). */
   protected commitEdit(): void {
     const edit = this.editState();
+    if (!edit) return;
+    if (edit.kind === 'node') this.commitNodeEdit(edit);
+    else this.commitLinkEdit(edit);
+  }
+
+  /**
+   * Validates a node edit (UC-3 step 3, business rule 2) and, when valid, writes
+   * an immutable copy back through {@link dataSource} and closes (step 3.1). On
+   * failure it keeps the overlay open with the error (extension 3.a). Only fields
+   * the user is permitted to edit are touched.
+   */
+  private commitNodeEdit(edit: NodeEditDraft): void {
     const data = this.dataSource();
-    if (!edit || !data) {
+    if (!data) {
       this.editState.set(null);
       return;
     }
@@ -338,14 +459,74 @@ export class AllomoneySankeyDiagram {
     this.editState.set(null);
   }
 
-  /** Discards the edit and closes the overlay (UC-3 extension 3.a.1.a: Esc/Cancel). */
+  /**
+   * Validates a link edit (UC-4 step 3, business rule 2) and, when valid, writes
+   * an immutable copy back through {@link dataSource} and closes (step 3.1). On
+   * failure it keeps the overlay open with the error (extension 3.a). Only fields
+   * the user is permitted to edit are touched; the rest keep their prior value.
+   */
+  private commitLinkEdit(edit: LinkEditDraft): void {
+    const data = this.dataSource();
+    if (!data) {
+      this.editState.set(null);
+      return;
+    }
+    const nodeIds = new Set(this.layout()?.nodes.map((n) => n.id));
+
+    // Selects only offer existing node ids, but re-validate defensively.
+    const nextSource = this.canEditLinkSource()
+      ? Number(this.sourceSelectRef()?.nativeElement.value)
+      : edit.source;
+    const nextTarget = this.canEditLinkTarget()
+      ? Number(this.targetSelectRef()?.nativeElement.value)
+      : edit.target;
+
+    // Business rule 2: source and target must be existing, distinct nodes.
+    if (!nodeIds.has(nextSource) || !nodeIds.has(nextTarget)) {
+      this.editState.set({ ...edit, error: 'Source and target must be existing nodes.' });
+      return;
+    }
+    if (nextSource === nextTarget) {
+      this.editState.set({ ...edit, error: 'Source and target must be different.' });
+      return;
+    }
+
+    // Business rule 2: value must be a positive number (required for a link).
+    let nextValue = edit.seedValue.length > 0 ? Number(edit.seedValue) : NaN;
+    if (this.canEditLinkValue()) {
+      const raw = (this.linkValueInputRef()?.nativeElement.value ?? '').trim();
+      nextValue = Number(raw);
+    }
+    if (!Number.isFinite(nextValue) || nextValue <= 0) {
+      this.editState.set({ ...edit, error: 'Value must be a positive number.' });
+      return;
+    }
+
+    // Rewrite the first link matching the original source/target (its identity).
+    let replaced = false;
+    const links = data.links.map((link) => {
+      if (replaced || !link || link.source !== edit.source || link.target !== edit.target) return link;
+      replaced = true;
+      return {
+        ...link,
+        ...(this.canEditLinkSource() ? { source: nextSource } : {}),
+        ...(this.canEditLinkTarget() ? { target: nextTarget } : {}),
+        ...(this.canEditLinkValue() ? { value: nextValue } : {}),
+      };
+    });
+
+    this.dataSource.set({ ...data, links });
+    this.editState.set(null);
+  }
+
+  /** Discards the edit and closes the overlay (UC-3/UC-4 extension 3.a.1.a: Esc/Cancel). */
   protected cancelEdit(): void {
     this.editState.set(null);
   }
 
   /**
    * Commits when focus leaves the whole overlay — i.e. the user "clicks outside
-   * the editable area" (UC-3 step 2). Focus moving between the overlay's own
+   * the editable area" (UC-3/UC-4 step 2). Focus moving between the overlay's own
    * controls (a field, Save, Cancel) is ignored so those keep their own intent.
    */
   protected onEditFocusOut(event: FocusEvent): void {
@@ -365,13 +546,18 @@ export class AllomoneySankeyDiagram {
     });
 
     // Move keyboard focus into the overlay when an edit opens, so keyboard users
-    // land in the first editable field (UC-3 accessibility).
+    // land in the first editable control (UC-3/UC-4 accessibility).
     effect(() => {
-      if (this.editingNodeId() === null) return;
+      if (this.editKey() === null) return;
       queueMicrotask(() => {
-        const el = this.nameInputRef()?.nativeElement ?? this.valueInputRef()?.nativeElement;
+        const el =
+          this.nameInputRef()?.nativeElement ??
+          this.valueInputRef()?.nativeElement ??
+          this.sourceSelectRef()?.nativeElement ??
+          this.targetSelectRef()?.nativeElement ??
+          this.linkValueInputRef()?.nativeElement;
         el?.focus();
-        el?.select();
+        if (el instanceof HTMLInputElement) el.select();
       });
     });
   }

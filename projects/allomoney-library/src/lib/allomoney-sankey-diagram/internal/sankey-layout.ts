@@ -29,6 +29,8 @@ export interface LayoutLink {
   readonly id: string;
   readonly source: number;
   readonly target: number;
+  /** Raw flow magnitude. */
+  readonly value: number;
   /** SVG `path` `d` for the closed ribbon. */
   readonly path: string;
   readonly color: string;
@@ -400,6 +402,7 @@ export function computeSankeyLayout(
     id: `${geom.link.source}-${geom.link.target}`,
     source: geom.link.source,
     target: geom.link.target,
+    value: geom.link.value,
     path: geom.path,
     color: geom.link.color ?? geom.source.color,
     thickness: geom.thickness,
