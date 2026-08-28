@@ -8,6 +8,7 @@ import {
   inject,
   input,
   model,
+  numberAttribute,
   signal,
   viewChild,
 } from '@angular/core';
@@ -26,6 +27,7 @@ import {
 } from './internal/sankey-layout';
 import { collectChain, type Chain, type ChainSeed } from './internal/sankey-chain';
 import { validateSankeyData } from './internal/validate-sankey-data';
+import { resolveDimensions } from './internal/validate-dimensions';
 
 /** A node paired with its current hover-dim state. */
 interface RenderNode extends LayoutNode {
@@ -131,6 +133,10 @@ let uidCounter = 0;
     // palette-tuned styling apply.
     '[attr.data-theme]': 'theme()',
     '[class.allomoney-sankey--empty]': 'isEmpty()',
+    // Explicit pixel size when requested and valid; otherwise `null` removes the
+    // inline style so the SCSS default (100% of the container) applies.
+    '[style.width.px]': 'dimensions().width',
+    '[style.height.px]': 'dimensions().height',
   },
 })
 export class AllomoneySankeyDiagram {
@@ -174,6 +180,16 @@ export class AllomoneySankeyDiagram {
   readonly orientationInput = input<SankeyOrientation | undefined>(undefined, {
     alias: 'orientation',
   });
+  /** Raw `[width]` element input in px (see resolved {@link dimensions}). */
+  readonly widthInput = input<number | null | undefined>(undefined, {
+    alias: 'width',
+    transform: numberAttribute,
+  });
+  /** Raw `[height]` element input in px (see resolved {@link dimensions}). */
+  readonly heightInput = input<number | null | undefined>(undefined, {
+    alias: 'height',
+    transform: numberAttribute,
+  });
 
   /**
    * The resolved visual theme: {@link options}`.theme` when set, else the
@@ -200,6 +216,20 @@ export class AllomoneySankeyDiagram {
    */
   protected readonly orientation = computed<SankeyOrientation>(
     () => this.options().orientation ?? this.orientationInput() ?? 'horizontal',
+  );
+
+  /**
+   * The resolved host size in CSS pixels (or `null` per axis for the default
+   * 100%-of-container size). {@link options}`.width`/`.height` win over the
+   * `[width]`/`[height]` inputs; an invalid or display-distorting request is
+   * discarded (its error logged) and the default size is used. See
+   * {@link resolveDimensions}.
+   */
+  protected readonly dimensions = computed(() =>
+    resolveDimensions(
+      this.options().width ?? this.widthInput(),
+      this.options().height ?? this.heightInput(),
+    ),
   );
 
   // Edit flags can be set two ways: as a dedicated element input
@@ -639,6 +669,14 @@ export class AllomoneySankeyDiagram {
     // invalid data (main-scenario extension 1.1.b.2). Runs on each change.
     effect(() => {
       for (const message of this.validation().errors) {
+        console.error(`[allomoney-sankey-diagram] ${message}`);
+      }
+    });
+
+    // Log any rejected width/height so consumers see why an invalid or
+    // display-distorting size fell back to the default (100% of the container).
+    effect(() => {
+      for (const message of this.dimensions().errors) {
         console.error(`[allomoney-sankey-diagram] ${message}`);
       }
     });

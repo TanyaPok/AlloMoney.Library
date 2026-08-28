@@ -54,7 +54,7 @@ export class App {
     protected readonly options1 = signal<SankeyOptions>({
         currency: 'CAD',
         canEditNodeName: false,
-        canEditNodeValue: false,
+        canEditNodeValue: false
     });
 
     /** Presentation options for the dark card (dark theme, vertical flow). */
@@ -66,6 +66,7 @@ export class App {
         canEditNodeValue: true,
         canEditLinkValue: true,
         canEditLinkSource: true,
-        canEditLinkTarget: true
+        canEditLinkTarget: true,
+        width: 850.50
     });
 }

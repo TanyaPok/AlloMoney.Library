@@ -81,14 +81,24 @@ placeholders are **embedded inline** in the component's CSS as data-URIs —
 | `theme` | `'light' \| 'dark'` | config `defaultTheme` | Visual theme; also selects the light/dark empty-state placeholder. |
 | `currency` | `string \| null` | `null` | ISO 4217 code; formats node/link values as currency, else plain numbers. |
 | `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Flow direction. |
+| `width` / `height` | `number \| null` | `null` (100% of container) | Rendered size in CSS pixels. Invalid or display-distorting values are ignored (logged) and the default size is used. |
 | `canEditNodeName` / `canEditNodeValue` | `boolean` | `false` | Allow editing a node's name / value by double-click. |
 | `canEditLinkValue` / `canEditLinkSource` / `canEditLinkTarget` | `boolean` | `false` | Allow editing a link's value / re-pointing its source / target. |
 
-Every field in `options` — `theme`, `currency`, `orientation`, and the five
-`canEdit*` flags — can be set **either** as an element input (`[theme]="'dark'"`,
-`[canEditNodeName]="true"`) **or** through `options`
-(`{ theme: 'dark', canEditNodeName: true }`). When both are supplied for the same
-field, the **`options` value wins**.
+Every field in `options` — `theme`, `currency`, `orientation`, `width`,
+`height`, and the five `canEdit*` flags — can be set **either** as an element
+input (`[theme]="'dark'"`, `[height]="520"`, `[canEditNodeName]="true"`) **or**
+through `options` (`{ theme: 'dark', height: 520, canEditNodeName: true }`). When
+both are supplied for the same field, the **`options` value wins**.
+
+### Sizing
+
+By default the diagram fills **100% of its container** on both axes. Set `width`
+and/or `height` (CSS pixels) to pin a fixed size. Each must be a positive number
+of at least **200px**, and when both are given their ratio must stay reasonably
+close to the diagram's natural proportions; a value that is invalid or would
+significantly distort the display is **ignored, an error is logged to the
+console, and the diagram renders at its default size**.
 
 ### Outputs
 
