@@ -12,6 +12,7 @@ export { AllomoneySankeyDiagram } from './lib/allomoney-sankey-diagram/allomoney
 // Public data model
 export type {
   SankeyData,
+  SankeyOptions,
   SankeyNode,
   SankeyLink,
   SankeyTheme,
