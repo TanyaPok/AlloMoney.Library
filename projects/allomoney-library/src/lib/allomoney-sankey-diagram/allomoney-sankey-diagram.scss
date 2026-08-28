@@ -3,7 +3,6 @@
   // custom properties at runtime (no rebuild) to restyle the diagram. Renaming
   // one is a breaking change. Light theme is the default.
   --allomoney-label-color: #1a2233;
-  --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(0, 0, 0, 0.18);
   --allomoney-link-opacity: 0.45;
   // Opacity applied to elements outside the hovered chain (UC-2). Runtime-
@@ -11,7 +10,6 @@
   --allomoney-dim-opacity: 0.3;
   --allomoney-label-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --allomoney-label-size: 14px;
-  --allomoney-value-size: 15px;
 
   // UC-3 edit overlay theming (runtime-overridable like the others).
   --allomoney-edit-bg: #ffffff;
@@ -19,6 +17,12 @@
   --allomoney-edit-border: #b7c0d0;
   --allomoney-edit-accent: #1f5fd6;
   --allomoney-edit-error: #b00020;
+
+  // Hover tooltip theming (runtime-overridable like the others).
+  --allomoney-tooltip-bg: #ffffff;
+  --allomoney-tooltip-fg: #1a2233;
+  --allomoney-tooltip-border: #b7c0d0;
+  --allomoney-tooltip-muted: #5a6785;
 
   display: block;
   position: relative;
@@ -29,9 +33,6 @@
 
 :host([data-theme='dark']) {
   --allomoney-label-color: #e6ecf7;
-  // Node fills stay light/pastel in both themes, so the in-node value keeps a
-  // dark ink for AA contrast against them.
-  --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(255, 255, 255, 0.22);
   --allomoney-link-opacity: 0.5;
 
@@ -40,6 +41,11 @@
   --allomoney-edit-border: #4a566e;
   --allomoney-edit-accent: #1f5fd6;
   --allomoney-edit-error: #ff8a9a;
+
+  --allomoney-tooltip-bg: #232a38;
+  --allomoney-tooltip-fg: #e6ecf7;
+  --allomoney-tooltip-border: #4a566e;
+  --allomoney-tooltip-muted: #9aa7bd;
 }
 
 // --- Empty state ----------------------------------
@@ -106,10 +112,36 @@
   opacity: var(--allomoney-dim-opacity);
 }
 
+// --- Selection -----------------------------------------------------------
+// Clicking a node or link that can be changed selects it: it gets an edge in an
+// INTENSIFIED shade of its own color. Each element publishes its color as
+// --allomoney-selected-color; the stroke darkens the lightness and lifts the
+// chroma via relative color syntax. The first `stroke` line is a fallback (plain
+// element color) for engines without `oklch(from …)` support. (Only editable
+// elements are selectable, and those already carry a pointer cursor above.)
+.allomoney-sankey__node--selected .allomoney-sankey__node-rect {
+  stroke: var(--allomoney-selected-color);
+  stroke: oklch(from var(--allomoney-selected-color) calc(l * 0.72) calc(c + 0.1) h);
+  stroke-width: 3;
+}
+
+.allomoney-sankey__link--selected {
+  fill-opacity: 1;
+  stroke: var(--allomoney-selected-color);
+  stroke: oklch(from var(--allomoney-selected-color) calc(l * 0.72) calc(c + 0.1) h);
+  stroke-width: 2.5;
+}
+
 // UC-3: editable nodes advertise interactivity and expose a visible focus ring
 // for keyboard users (double-click, or Enter/F2 when focused, opens the editor).
 .allomoney-sankey__node--editable {
   cursor: pointer;
+
+  // Suppress the UA's default black focus box on pointer click (it appears on
+  // :focus but not :focus-visible). Keyboard focus keeps the stroke ring below.
+  &:focus {
+    outline: none;
+  }
 
   &:focus-visible {
     outline: none;
@@ -128,6 +160,12 @@
   cursor: pointer;
 }
 
+// Suppress the UA's default black focus box on pointer click; keyboard focus
+// keeps the accent ring below.
+.allomoney-sankey__link--editable:focus {
+  outline: none;
+}
+
 .allomoney-sankey__link--editable:focus-visible {
   outline: none;
   stroke: var(--allomoney-edit-accent);
@@ -142,12 +180,6 @@
 .allomoney-sankey__node-label {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
-}
-
-.allomoney-sankey__node-value {
-  fill: var(--allomoney-node-value-color);
-  font-size: var(--allomoney-value-size);
-  font-weight: 700;
 }
 
 .allomoney-sankey__link-value {
@@ -169,6 +201,57 @@
   clip: rect(0, 0, 0, 0);
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+// --- Custom hover tooltip ------------------------------------------------
+// Absolutely positioned inside the host (which is position: relative). It
+// tracks the pointer via left/top and offsets itself with a transform, flipping
+// to the opposite side near the host's right/bottom edges. Purely visual, so it
+// never intercepts pointer events.
+.allomoney-sankey__tooltip {
+  --allomoney-tooltip-offset: 12px;
+  --allomoney-tooltip-tx: var(--allomoney-tooltip-offset);
+  --allomoney-tooltip-ty: var(--allomoney-tooltip-offset);
+
+  position: absolute;
+  z-index: 1;
+  transform: translate(var(--allomoney-tooltip-tx), var(--allomoney-tooltip-ty));
+  pointer-events: none;
+  max-inline-size: 240px;
+  padding: 7px 10px;
+  border: 1px solid var(--allomoney-tooltip-border);
+  border-radius: 8px;
+  background: var(--allomoney-tooltip-bg);
+  color: var(--allomoney-tooltip-fg);
+  font-family: var(--allomoney-label-font);
+  font-size: 13px;
+  line-height: 1.35;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+// Anchor to the left of the pointer when it sits in the host's right half.
+.allomoney-sankey__tooltip--flip-x {
+  --allomoney-tooltip-tx: calc(-100% - var(--allomoney-tooltip-offset));
+}
+
+// Anchor above the pointer when it sits in the host's lower half.
+.allomoney-sankey__tooltip--flip-y {
+  --allomoney-tooltip-ty: calc(-100% - var(--allomoney-tooltip-offset));
+}
+
+.allomoney-sankey__tooltip-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.allomoney-sankey__tooltip-label {
+  color: var(--allomoney-tooltip-muted);
+}
+
+.allomoney-sankey__tooltip-value {
+  font-weight: 700;
 }
 
 // --- UC-3 edit overlay ---------------------------------------------------

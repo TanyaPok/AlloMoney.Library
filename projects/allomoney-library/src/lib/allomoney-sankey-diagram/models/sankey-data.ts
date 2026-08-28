@@ -81,6 +81,18 @@ export interface SankeyOptions {
    */
   readonly orientation?: SankeyOrientation;
   /**
+   * Rendered width in CSS pixels. When omitted (or `null`), the diagram fills
+   * 100% of its container. An invalid or display-distorting value is ignored
+   * (logged to the console) and the default size is used instead.
+   */
+  readonly width?: number | null;
+  /**
+   * Rendered height in CSS pixels. When omitted (or `null`), the diagram fills
+   * 100% of its container. An invalid or display-distorting value is ignored
+   * (logged to the console) and the default size is used instead.
+   */
+  readonly height?: number | null;
+  /**
    * When `true`, a user may edit each node's name by double-clicking it.
    * Defaults to `false` (read-only).
    */

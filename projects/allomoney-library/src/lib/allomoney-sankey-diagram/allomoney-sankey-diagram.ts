@@ -8,6 +8,7 @@ import {
   inject,
   input,
   model,
+  numberAttribute,
   signal,
   viewChild,
 } from '@angular/core';
@@ -26,11 +27,14 @@ import {
 } from './internal/sankey-layout';
 import { collectChain, type Chain, type ChainSeed } from './internal/sankey-chain';
 import { validateSankeyData } from './internal/validate-sankey-data';
+import { resolveDimensions } from './internal/validate-dimensions';
 
 /** A node paired with its current hover-dim state. */
 interface RenderNode extends LayoutNode {
   /** `true` when a chain is hovered and this node is outside it. */
   readonly dimmed: boolean;
+  /** `true` when this node is the current selection (intensified edge). */
+  readonly selected: boolean;
   /** Accessible name for the node's editable `button`, precomputed. */
   readonly editLabel: string;
 }
@@ -39,8 +43,35 @@ interface RenderNode extends LayoutNode {
 interface RenderLink extends LayoutLink {
   /** `true` when a chain is hovered and this link is outside it. */
   readonly dimmed: boolean;
+  /** `true` when this link is the current selection (intensified edge). */
+  readonly selected: boolean;
   /** Accessible name for the link's editable `button`, precomputed. */
   readonly editLabel: string;
+}
+
+/** The currently selected element, or `null` when nothing is selected. */
+type Selection = { readonly kind: 'node'; readonly id: number } | { readonly kind: 'link'; readonly id: string };
+
+/** One line of the custom hover tooltip. */
+interface TooltipRow {
+  /** Field label (e.g. `"Source"`), or `null` to show only the value. */
+  readonly label: string | null;
+  /** The formatted value shown on this row. */
+  readonly value: string;
+}
+
+/** The placed custom tooltip: pointer-relative position, flip flags, and rows. */
+interface TooltipView {
+  /** Pointer x, in pixels relative to the host. */
+  readonly x: number;
+  /** Pointer y, in pixels relative to the host. */
+  readonly y: number;
+  /** Anchor to the left of the pointer when it is in the host's right half. */
+  readonly flipX: boolean;
+  /** Anchor above the pointer when it is in the host's lower half. */
+  readonly flipY: boolean;
+  /** The rows to render, top to bottom. */
+  readonly rows: readonly TooltipRow[];
 }
 
 /** Fields shared by every in-place edit draft. */
@@ -131,14 +162,17 @@ let uidCounter = 0;
     // palette-tuned styling apply.
     '[attr.data-theme]': 'theme()',
     '[class.allomoney-sankey--empty]': 'isEmpty()',
+    // Explicit pixel size when requested and valid; otherwise `null` removes the
+    // inline style so the SCSS default (100% of the container) applies.
+    '[style.width.px]': 'dimensions().width',
+    '[style.height.px]': 'dimensions().height',
   },
 })
 export class AllomoneySankeyDiagram {
   private readonly config = inject(ALLOMONEY_LIBRARY_CONFIG);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly uid = ++uidCounter;
 
-  /** Element id for the SVG `<title>` (accessible name). */
-  protected readonly titleId = `allomoney-sankey-title-${this.uid}`;
   /** Element id for the SVG `<desc>` (accessible summary). */
   protected readonly descId = `allomoney-sankey-desc-${this.uid}`;
 
@@ -174,6 +208,16 @@ export class AllomoneySankeyDiagram {
   readonly orientationInput = input<SankeyOrientation | undefined>(undefined, {
     alias: 'orientation',
   });
+  /** Raw `[width]` element input in px (see resolved {@link dimensions}). */
+  readonly widthInput = input<number | null | undefined>(undefined, {
+    alias: 'width',
+    transform: numberAttribute,
+  });
+  /** Raw `[height]` element input in px (see resolved {@link dimensions}). */
+  readonly heightInput = input<number | null | undefined>(undefined, {
+    alias: 'height',
+    transform: numberAttribute,
+  });
 
   /**
    * The resolved visual theme: {@link options}`.theme` when set, else the
@@ -200,6 +244,20 @@ export class AllomoneySankeyDiagram {
    */
   protected readonly orientation = computed<SankeyOrientation>(
     () => this.options().orientation ?? this.orientationInput() ?? 'horizontal',
+  );
+
+  /**
+   * The resolved host size in CSS pixels (or `null` per axis for the default
+   * 100%-of-container size). {@link options}`.width`/`.height` win over the
+   * `[width]`/`[height]` inputs; an invalid or display-distorting request is
+   * discarded (its error logged) and the default size is used. See
+   * {@link resolveDimensions}.
+   */
+  protected readonly dimensions = computed(() =>
+    resolveDimensions(
+      this.options().width ?? this.widthInput(),
+      this.options().height ?? this.heightInput(),
+    ),
   );
 
   // Edit flags can be set two ways: as a dedicated element input
@@ -318,6 +376,12 @@ export class AllomoneySankeyDiagram {
   private readonly hovered = signal<ChainSeed | null>(null);
 
   /**
+   * The element the user has selected by clicking it, or `null`. A selected node
+   * or link draws an edge in an intensified shade of its own color.
+   */
+  private readonly selected = signal<Selection | null>(null);
+
+  /**
    * The nodes and links that belong to the hovered element's chain, or `null`
    * when nothing is hovered. Recomputed only when the hovered element or the
    * layout changes.
@@ -338,9 +402,11 @@ export class AllomoneySankeyDiagram {
     const view = this.layout();
     if (!view) return [];
     const chain = this.activeChain();
+    const sel = this.selected();
     return view.nodes.map((node) => ({
       ...node,
       dimmed: chain !== null && !chain.nodeIds.has(node.id),
+      selected: sel?.kind === 'node' && sel.id === node.id,
       editLabel: node.valueLabel
         ? `Edit node ${node.label}, value ${node.valueLabel}`
         : `Edit node ${node.label}`,
@@ -352,9 +418,11 @@ export class AllomoneySankeyDiagram {
     const view = this.layout();
     if (!view) return [];
     const chain = this.activeChain();
+    const sel = this.selected();
     return view.links.map((link) => ({
       ...link,
       dimmed: chain !== null && !chain.linkIds.has(link.id),
+      selected: sel?.kind === 'link' && sel.id === link.id,
       editLabel: `Edit flow ${link.a11yLabel}`,
     }));
   });
@@ -370,28 +438,115 @@ export class AllomoneySankeyDiagram {
 
   /**
    * Highlights the chain of the hovered node (UC-2 main scenario, steps 1–2):
-   * every element outside its flow thread becomes half-transparent.
+   * every element outside its flow thread becomes half-transparent. Also seeds
+   * the custom tooltip's position from the pointer.
    */
-  protected onHoverNode(id: number): void {
+  protected onHoverNode(id: number, event: PointerEvent): void {
     this.hovered.set({ kind: 'node', id });
+    this.updateTooltipPos(event);
   }
 
   /** Highlights the chain of the hovered link ribbon or its value label. */
-  protected onHoverLink(link: LayoutLink): void {
+  protected onHoverLink(link: LayoutLink, event: PointerEvent): void {
     this.hovered.set({
       kind: 'link',
       id: link.id,
       source: link.source,
       target: link.target,
     });
+    this.updateTooltipPos(event);
+  }
+
+  /** Follows the pointer so the tooltip tracks it while over the diagram. */
+  protected onTooltipMove(event: PointerEvent): void {
+    if (this.hovered()) this.updateTooltipPos(event);
   }
 
   /**
    * Clears the highlight when the pointer leaves an element (UC-2 steps 3–4):
-   * the translucency added on hover is removed.
+   * the translucency added on hover is removed and the tooltip is hidden.
    */
   protected onLeave(): void {
     this.hovered.set(null);
+    this.tooltipPos.set(null);
+  }
+
+  // --- selection (click to select, click again or click empty to clear) ----
+
+  /**
+   * Toggles selection of a node; no-op when the node cannot be changed (every
+   * `canEditNode*` is false). Always stops the click from clearing the selection
+   * via the canvas, so clicking a non-selectable node leaves any selection intact.
+   */
+  protected toggleSelectNode(id: number, event: MouseEvent): void {
+    event.stopPropagation();
+    if (!this.editingEnabled()) return;
+    const cur = this.selected();
+    this.selected.set(cur?.kind === 'node' && cur.id === id ? null : { kind: 'node', id });
+  }
+
+  /**
+   * Toggles selection of a link; no-op when the link cannot be changed (every
+   * `canEditLink*` is false). Always stops the click from clearing the selection
+   * via the canvas, so clicking a non-selectable link leaves any selection intact.
+   */
+  protected toggleSelectLink(link: LayoutLink, event: MouseEvent): void {
+    event.stopPropagation();
+    if (!this.linkEditingEnabled()) return;
+    const cur = this.selected();
+    this.selected.set(cur?.kind === 'link' && cur.id === link.id ? null : { kind: 'link', id: link.id });
+  }
+
+  /** Clears the selection (clicking empty canvas). */
+  protected clearSelection(): void {
+    this.selected.set(null);
+  }
+
+  // --- custom hover tooltip ------------------------------------------------
+
+  /** Pointer position (host-relative px) + edge-flip flags, or `null` when idle. */
+  private readonly tooltipPos = signal<Omit<TooltipView, 'rows'> | null>(null);
+
+  /** Node id → display label, rebuilt only when the layout changes. */
+  private readonly nodeLabelById = computed(() => {
+    const view = this.layout();
+    return new Map(view ? view.nodes.map((n) => [n.id, n.label]) : []);
+  });
+
+  /**
+   * The placed custom tooltip, or `null` when nothing is hovered. A node shows
+   * only its value; a link shows source, target, and value on separate rows.
+   */
+  protected readonly tooltipView = computed<TooltipView | null>(() => {
+    const seed = this.hovered();
+    const pos = this.tooltipPos();
+    const view = this.layout();
+    if (!seed || !pos || !view) return null;
+
+    let rows: readonly TooltipRow[];
+    if (seed.kind === 'node') {
+      const node = view.nodes.find((n) => n.id === seed.id);
+      if (!node) return null;
+      rows = [{ label: null, value: node.total }];
+    } else {
+      const link = view.links.find((l) => l.id === seed.id);
+      if (!link) return null;
+      const labels = this.nodeLabelById();
+      rows = [
+        { label: 'Source', value: labels.get(link.source) ?? String(link.source) },
+        { label: 'Target', value: labels.get(link.target) ?? String(link.target) },
+        { label: 'Value', value: link.valueLabel },
+      ];
+    }
+    return { ...pos, rows };
+  });
+
+  /** Records the pointer position relative to the host, with edge-flip flags. */
+  private updateTooltipPos(event: PointerEvent): void {
+    const rect = this.host.nativeElement.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    this.tooltipPos.set({ x, y, flipX: x > rect.width / 2, flipY: y > rect.height / 2 });
   }
 
   // --- edit a node (UC-3) or a link (UC-4) in place ----------------------
@@ -639,6 +794,14 @@ export class AllomoneySankeyDiagram {
     // invalid data (main-scenario extension 1.1.b.2). Runs on each change.
     effect(() => {
       for (const message of this.validation().errors) {
+        console.error(`[allomoney-sankey-diagram] ${message}`);
+      }
+    });
+
+    // Log any rejected width/height so consumers see why an invalid or
+    // display-distorting size fell back to the default (100% of the container).
+    effect(() => {
+      for (const message of this.dimensions().errors) {
         console.error(`[allomoney-sankey-diagram] ${message}`);
       }
     });

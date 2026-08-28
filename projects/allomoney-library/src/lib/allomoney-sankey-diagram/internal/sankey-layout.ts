@@ -8,6 +8,11 @@ export interface LayoutNode {
   readonly label: string;
   /** Formatted "total deposit" shown inside the node, or `null` when derived. */
   readonly valueLabel: string | null;
+  /**
+   * Formatted effective node total (the explicit value, or the derived flow
+   * magnitude when none was given). Always present — used for the hover tooltip.
+   */
+  readonly total: string;
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -18,9 +23,6 @@ export interface LayoutNode {
   readonly labelX: number;
   readonly labelY: number;
   readonly labelAnchor: 'start' | 'middle' | 'end';
-  /** Centered position for the in-node value label (when present). */
-  readonly valueX: number;
-  readonly valueY: number;
 }
 
 /** A link ribbon positioned by the layout engine. */
@@ -429,6 +431,7 @@ export function computeSankeyLayout(
       id: w.node.id,
       label: w.node.label,
       valueLabel: w.node.value != null ? format(w.node.value) : null,
+      total: format(w.magnitude),
       x,
       y,
       width: nodeW,
@@ -438,8 +441,6 @@ export function computeSankeyLayout(
       labelX: vertical ? canonLabelY : canonLabelX,
       labelY: vertical ? canonLabelX : canonLabelY,
       labelAnchor: vertical ? 'middle' : 'end',
-      valueX: x + nodeW / 2,
-      valueY: y + nodeH / 2,
     };
   });
 
