@@ -11,8 +11,9 @@
          [attr.viewBox]="'0 0 ' + view.width + ' ' + view.height"
          preserveAspectRatio="xMidYMid meet"
          role="img"
-         [attr.aria-labelledby]="titleId + ' ' + descId">
-        <title [id]="titleId">Sankey diagram of money flows</title>
+         aria-label="Sankey diagram of money flows"
+         [attr.aria-describedby]="descId"
+         (pointermove)="onTooltipMove($event)">
         <desc [id]="descId">{{ summary() }}</desc>
 
         <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
@@ -30,7 +31,7 @@
                       [attr.aria-label]="linkEditingEnabled() ? link.editLabel : null"
                       [attr.d]="link.path"
                       [style.fill]="link.color"
-                      (pointerenter)="onHoverLink(link)"
+                      (pointerenter)="onHoverLink(link, $event)"
                       (pointerleave)="onLeave()"
                       (dblclick)="startLinkEdit(link)"
                       (keydown.enter)="startLinkEdit(link)"
@@ -52,7 +53,7 @@
                    [attr.role]="editingEnabled() ? 'button' : null"
                    [attr.tabindex]="editingEnabled() ? 0 : null"
                    [attr.aria-label]="editingEnabled() ? node.editLabel : null"
-                   (pointerenter)="onHoverNode(node.id)"
+                   (pointerenter)="onHoverNode(node.id, $event)"
                    (pointerleave)="onLeave()"
                    (dblclick)="startEdit(node.id)"
                    (keydown.enter)="startEdit(node.id)"
@@ -94,7 +95,7 @@
                       [attr.y]="link.labelY"
                       text-anchor="middle"
                       dominant-baseline="middle"
-                      (pointerenter)="onHoverLink(link)"
+                      (pointerenter)="onHoverLink(link, $event)"
                       (pointerleave)="onLeave()"
                       (dblclick)="startLinkEdit(link)">
                     {{ link.valueLabel }}
@@ -220,6 +221,30 @@
             </foreignObject>
         }
     </svg>
+
+    <!-- Custom hover tooltip. Themed with the component (data-theme), it tracks
+         the pointer and flips near the host edges. Nodes show only their value;
+         links show source, target, and value on separate rows. Purely visual
+         (aria-hidden) — the same information is exposed to AT via the node/link
+         labels and the visually-hidden list below. -->
+    @if (tooltipView(); as tip) {
+        <div class="allomoney-sankey__tooltip"
+             [class.allomoney-sankey__tooltip--flip-x]="tip.flipX"
+             [class.allomoney-sankey__tooltip--flip-y]="tip.flipY"
+             [style.left.px]="tip.x"
+             [style.top.px]="tip.y"
+             role="tooltip"
+             aria-hidden="true">
+            @for (row of tip.rows; track $index) {
+                <div class="allomoney-sankey__tooltip-row">
+                    @if (row.label) {
+                        <span class="allomoney-sankey__tooltip-label">{{ row.label }}</span>
+                    }
+                    <span class="allomoney-sankey__tooltip-value">{{ row.value }}</span>
+                </div>
+            }
+        </div>
+    }
 
     <!-- Text alternative: the flows as a visually-hidden list so information is
          not conveyed by color/position alone. -->

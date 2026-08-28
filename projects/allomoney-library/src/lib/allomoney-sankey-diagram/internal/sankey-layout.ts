@@ -8,6 +8,11 @@ export interface LayoutNode {
   readonly label: string;
   /** Formatted "total deposit" shown inside the node, or `null` when derived. */
   readonly valueLabel: string | null;
+  /**
+   * Formatted effective node total (the explicit value, or the derived flow
+   * magnitude when none was given). Always present — used for the hover tooltip.
+   */
+  readonly total: string;
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -429,6 +434,7 @@ export function computeSankeyLayout(
       id: w.node.id,
       label: w.node.label,
       valueLabel: w.node.value != null ? format(w.node.value) : null,
+      total: format(w.magnitude),
       x,
       y,
       width: nodeW,

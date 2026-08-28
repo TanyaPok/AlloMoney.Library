@@ -45,6 +45,28 @@ interface RenderLink extends LayoutLink {
   readonly editLabel: string;
 }
 
+/** One line of the custom hover tooltip. */
+interface TooltipRow {
+  /** Field label (e.g. `"Source"`), or `null` to show only the value. */
+  readonly label: string | null;
+  /** The formatted value shown on this row. */
+  readonly value: string;
+}
+
+/** The placed custom tooltip: pointer-relative position, flip flags, and rows. */
+interface TooltipView {
+  /** Pointer x, in pixels relative to the host. */
+  readonly x: number;
+  /** Pointer y, in pixels relative to the host. */
+  readonly y: number;
+  /** Anchor to the left of the pointer when it is in the host's right half. */
+  readonly flipX: boolean;
+  /** Anchor above the pointer when it is in the host's lower half. */
+  readonly flipY: boolean;
+  /** The rows to render, top to bottom. */
+  readonly rows: readonly TooltipRow[];
+}
+
 /** Fields shared by every in-place edit draft. */
 interface EditDraftBase {
   /** Validation message to show, or `null` while the draft is clean. */
@@ -141,10 +163,9 @@ let uidCounter = 0;
 })
 export class AllomoneySankeyDiagram {
   private readonly config = inject(ALLOMONEY_LIBRARY_CONFIG);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly uid = ++uidCounter;
 
-  /** Element id for the SVG `<title>` (accessible name). */
-  protected readonly titleId = `allomoney-sankey-title-${this.uid}`;
   /** Element id for the SVG `<desc>` (accessible summary). */
   protected readonly descId = `allomoney-sankey-desc-${this.uid}`;
 
@@ -400,28 +421,84 @@ export class AllomoneySankeyDiagram {
 
   /**
    * Highlights the chain of the hovered node (UC-2 main scenario, steps 1–2):
-   * every element outside its flow thread becomes half-transparent.
+   * every element outside its flow thread becomes half-transparent. Also seeds
+   * the custom tooltip's position from the pointer.
    */
-  protected onHoverNode(id: number): void {
+  protected onHoverNode(id: number, event: PointerEvent): void {
     this.hovered.set({ kind: 'node', id });
+    this.updateTooltipPos(event);
   }
 
   /** Highlights the chain of the hovered link ribbon or its value label. */
-  protected onHoverLink(link: LayoutLink): void {
+  protected onHoverLink(link: LayoutLink, event: PointerEvent): void {
     this.hovered.set({
       kind: 'link',
       id: link.id,
       source: link.source,
       target: link.target,
     });
+    this.updateTooltipPos(event);
+  }
+
+  /** Follows the pointer so the tooltip tracks it while over the diagram. */
+  protected onTooltipMove(event: PointerEvent): void {
+    if (this.hovered()) this.updateTooltipPos(event);
   }
 
   /**
    * Clears the highlight when the pointer leaves an element (UC-2 steps 3–4):
-   * the translucency added on hover is removed.
+   * the translucency added on hover is removed and the tooltip is hidden.
    */
   protected onLeave(): void {
     this.hovered.set(null);
+    this.tooltipPos.set(null);
+  }
+
+  // --- custom hover tooltip ------------------------------------------------
+
+  /** Pointer position (host-relative px) + edge-flip flags, or `null` when idle. */
+  private readonly tooltipPos = signal<Omit<TooltipView, 'rows'> | null>(null);
+
+  /** Node id → display label, rebuilt only when the layout changes. */
+  private readonly nodeLabelById = computed(() => {
+    const view = this.layout();
+    return new Map(view ? view.nodes.map((n) => [n.id, n.label]) : []);
+  });
+
+  /**
+   * The placed custom tooltip, or `null` when nothing is hovered. A node shows
+   * only its value; a link shows source, target, and value on separate rows.
+   */
+  protected readonly tooltipView = computed<TooltipView | null>(() => {
+    const seed = this.hovered();
+    const pos = this.tooltipPos();
+    const view = this.layout();
+    if (!seed || !pos || !view) return null;
+
+    let rows: readonly TooltipRow[];
+    if (seed.kind === 'node') {
+      const node = view.nodes.find((n) => n.id === seed.id);
+      if (!node) return null;
+      rows = [{ label: null, value: node.total }];
+    } else {
+      const link = view.links.find((l) => l.id === seed.id);
+      if (!link) return null;
+      const labels = this.nodeLabelById();
+      rows = [
+        { label: 'Source', value: labels.get(link.source) ?? String(link.source) },
+        { label: 'Target', value: labels.get(link.target) ?? String(link.target) },
+        { label: 'Value', value: link.valueLabel },
+      ];
+    }
+    return { ...pos, rows };
+  });
+
+  /** Records the pointer position relative to the host, with edge-flip flags. */
+  private updateTooltipPos(event: PointerEvent): void {
+    const rect = this.host.nativeElement.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    this.tooltipPos.set({ x, y, flipX: x > rect.width / 2, flipY: y > rect.height / 2 });
   }
 
   // --- edit a node (UC-3) or a link (UC-4) in place ----------------------

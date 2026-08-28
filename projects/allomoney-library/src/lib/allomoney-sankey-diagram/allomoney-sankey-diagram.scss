@@ -20,6 +20,12 @@
   --allomoney-edit-accent: #1f5fd6;
   --allomoney-edit-error: #b00020;
 
+  // Hover tooltip theming (runtime-overridable like the others).
+  --allomoney-tooltip-bg: #ffffff;
+  --allomoney-tooltip-fg: #1a2233;
+  --allomoney-tooltip-border: #b7c0d0;
+  --allomoney-tooltip-muted: #5a6785;
+
   display: block;
   position: relative;
   inline-size: 100%;
@@ -40,6 +46,11 @@
   --allomoney-edit-border: #4a566e;
   --allomoney-edit-accent: #1f5fd6;
   --allomoney-edit-error: #ff8a9a;
+
+  --allomoney-tooltip-bg: #232a38;
+  --allomoney-tooltip-fg: #e6ecf7;
+  --allomoney-tooltip-border: #4a566e;
+  --allomoney-tooltip-muted: #9aa7bd;
 }
 
 // --- Empty state ----------------------------------
@@ -169,6 +180,57 @@
   clip: rect(0, 0, 0, 0);
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+// --- Custom hover tooltip ------------------------------------------------
+// Absolutely positioned inside the host (which is position: relative). It
+// tracks the pointer via left/top and offsets itself with a transform, flipping
+// to the opposite side near the host's right/bottom edges. Purely visual, so it
+// never intercepts pointer events.
+.allomoney-sankey__tooltip {
+  --allomoney-tooltip-offset: 12px;
+  --allomoney-tooltip-tx: var(--allomoney-tooltip-offset);
+  --allomoney-tooltip-ty: var(--allomoney-tooltip-offset);
+
+  position: absolute;
+  z-index: 1;
+  transform: translate(var(--allomoney-tooltip-tx), var(--allomoney-tooltip-ty));
+  pointer-events: none;
+  max-inline-size: 240px;
+  padding: 7px 10px;
+  border: 1px solid var(--allomoney-tooltip-border);
+  border-radius: 8px;
+  background: var(--allomoney-tooltip-bg);
+  color: var(--allomoney-tooltip-fg);
+  font-family: var(--allomoney-label-font);
+  font-size: 13px;
+  line-height: 1.35;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+// Anchor to the left of the pointer when it sits in the host's right half.
+.allomoney-sankey__tooltip--flip-x {
+  --allomoney-tooltip-tx: calc(-100% - var(--allomoney-tooltip-offset));
+}
+
+// Anchor above the pointer when it sits in the host's lower half.
+.allomoney-sankey__tooltip--flip-y {
+  --allomoney-tooltip-ty: calc(-100% - var(--allomoney-tooltip-offset));
+}
+
+.allomoney-sankey__tooltip-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.allomoney-sankey__tooltip-label {
+  color: var(--allomoney-tooltip-muted);
+}
+
+.allomoney-sankey__tooltip-value {
+  font-weight: 700;
 }
 
 // --- UC-3 edit overlay ---------------------------------------------------
