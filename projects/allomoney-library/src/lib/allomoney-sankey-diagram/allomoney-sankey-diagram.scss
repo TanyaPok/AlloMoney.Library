@@ -112,10 +112,36 @@
   opacity: var(--allomoney-dim-opacity);
 }
 
+// --- Selection -----------------------------------------------------------
+// Clicking a node or link that can be changed selects it: it gets an edge in an
+// INTENSIFIED shade of its own color. Each element publishes its color as
+// --allomoney-selected-color; the stroke darkens the lightness and lifts the
+// chroma via relative color syntax. The first `stroke` line is a fallback (plain
+// element color) for engines without `oklch(from …)` support. (Only editable
+// elements are selectable, and those already carry a pointer cursor above.)
+.allomoney-sankey__node--selected .allomoney-sankey__node-rect {
+  stroke: var(--allomoney-selected-color);
+  stroke: oklch(from var(--allomoney-selected-color) calc(l * 0.72) calc(c + 0.1) h);
+  stroke-width: 3;
+}
+
+.allomoney-sankey__link--selected {
+  fill-opacity: 1;
+  stroke: var(--allomoney-selected-color);
+  stroke: oklch(from var(--allomoney-selected-color) calc(l * 0.72) calc(c + 0.1) h);
+  stroke-width: 2.5;
+}
+
 // UC-3: editable nodes advertise interactivity and expose a visible focus ring
 // for keyboard users (double-click, or Enter/F2 when focused, opens the editor).
 .allomoney-sankey__node--editable {
   cursor: pointer;
+
+  // Suppress the UA's default black focus box on pointer click (it appears on
+  // :focus but not :focus-visible). Keyboard focus keeps the stroke ring below.
+  &:focus {
+    outline: none;
+  }
 
   &:focus-visible {
     outline: none;
@@ -132,6 +158,12 @@
 .allomoney-sankey__link--editable,
 .allomoney-sankey__link-value--editable {
   cursor: pointer;
+}
+
+// Suppress the UA's default black focus box on pointer click; keyboard focus
+// keeps the accent ring below.
+.allomoney-sankey__link--editable:focus {
+  outline: none;
 }
 
 .allomoney-sankey__link--editable:focus-visible {

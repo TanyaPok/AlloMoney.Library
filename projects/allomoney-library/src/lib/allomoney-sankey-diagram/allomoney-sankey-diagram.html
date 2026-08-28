@@ -13,7 +13,8 @@
          role="img"
          aria-label="Sankey diagram of money flows"
          [attr.aria-describedby]="descId"
-         (pointermove)="onTooltipMove($event)">
+         (pointermove)="onTooltipMove($event)"
+         (click)="clearSelection()">
         <desc [id]="descId">{{ summary() }}</desc>
 
         <!-- Link ribbons. Decorative for AT — the flows are exposed as real text
@@ -25,14 +26,17 @@
             @for (link of renderLinks(); track link.id) {
                 <path class="allomoney-sankey__link"
                       [class.allomoney-sankey--dim]="link.dimmed"
+                      [class.allomoney-sankey__link--selected]="link.selected"
                       [class.allomoney-sankey__link--editable]="linkEditingEnabled()"
                       [attr.role]="linkEditingEnabled() ? 'button' : null"
                       [attr.tabindex]="linkEditingEnabled() ? 0 : null"
                       [attr.aria-label]="linkEditingEnabled() ? link.editLabel : null"
                       [attr.d]="link.path"
                       [style.fill]="link.color"
+                      [style.--allomoney-selected-color]="link.color"
                       (pointerenter)="onHoverLink(link, $event)"
                       (pointerleave)="onLeave()"
+                      (click)="toggleSelectLink(link, $event)"
                       (dblclick)="startLinkEdit(link)"
                       (keydown.enter)="startLinkEdit(link)"
                       (keydown.f2)="startLinkEdit(link)"/>
@@ -49,12 +53,14 @@
             @for (node of renderNodes(); track node.id) {
                 <g class="allomoney-sankey__node"
                    [class.allomoney-sankey--dim]="node.dimmed"
+                   [class.allomoney-sankey__node--selected]="node.selected"
                    [class.allomoney-sankey__node--editable]="editingEnabled()"
                    [attr.role]="editingEnabled() ? 'button' : null"
                    [attr.tabindex]="editingEnabled() ? 0 : null"
                    [attr.aria-label]="editingEnabled() ? node.editLabel : null"
                    (pointerenter)="onHoverNode(node.id, $event)"
                    (pointerleave)="onLeave()"
+                   (click)="toggleSelectNode(node.id, $event)"
                    (dblclick)="startEdit(node.id)"
                    (keydown.enter)="startEdit(node.id)"
                    (keydown.f2)="startEdit(node.id)">
@@ -64,7 +70,8 @@
                           [attr.width]="node.width"
                           [attr.height]="node.height"
                           rx="3"
-                          [style.fill]="node.color"/>
+                          [style.fill]="node.color"
+                          [style.--allomoney-selected-color]="node.color"/>
                     <text class="allomoney-sankey__node-label"
                           [attr.x]="node.labelX"
                           [attr.y]="node.labelY"
@@ -88,6 +95,7 @@
                       dominant-baseline="middle"
                       (pointerenter)="onHoverLink(link, $event)"
                       (pointerleave)="onLeave()"
+                      (click)="toggleSelectLink(link, $event)"
                       (dblclick)="startLinkEdit(link)">
                     {{ link.valueLabel }}
                 </text>

@@ -33,6 +33,8 @@ import { resolveDimensions } from './internal/validate-dimensions';
 interface RenderNode extends LayoutNode {
   /** `true` when a chain is hovered and this node is outside it. */
   readonly dimmed: boolean;
+  /** `true` when this node is the current selection (intensified edge). */
+  readonly selected: boolean;
   /** Accessible name for the node's editable `button`, precomputed. */
   readonly editLabel: string;
 }
@@ -41,9 +43,14 @@ interface RenderNode extends LayoutNode {
 interface RenderLink extends LayoutLink {
   /** `true` when a chain is hovered and this link is outside it. */
   readonly dimmed: boolean;
+  /** `true` when this link is the current selection (intensified edge). */
+  readonly selected: boolean;
   /** Accessible name for the link's editable `button`, precomputed. */
   readonly editLabel: string;
 }
+
+/** The currently selected element, or `null` when nothing is selected. */
+type Selection = { readonly kind: 'node'; readonly id: number } | { readonly kind: 'link'; readonly id: string };
 
 /** One line of the custom hover tooltip. */
 interface TooltipRow {
@@ -369,6 +376,12 @@ export class AllomoneySankeyDiagram {
   private readonly hovered = signal<ChainSeed | null>(null);
 
   /**
+   * The element the user has selected by clicking it, or `null`. A selected node
+   * or link draws an edge in an intensified shade of its own color.
+   */
+  private readonly selected = signal<Selection | null>(null);
+
+  /**
    * The nodes and links that belong to the hovered element's chain, or `null`
    * when nothing is hovered. Recomputed only when the hovered element or the
    * layout changes.
@@ -389,9 +402,11 @@ export class AllomoneySankeyDiagram {
     const view = this.layout();
     if (!view) return [];
     const chain = this.activeChain();
+    const sel = this.selected();
     return view.nodes.map((node) => ({
       ...node,
       dimmed: chain !== null && !chain.nodeIds.has(node.id),
+      selected: sel?.kind === 'node' && sel.id === node.id,
       editLabel: node.valueLabel
         ? `Edit node ${node.label}, value ${node.valueLabel}`
         : `Edit node ${node.label}`,
@@ -403,9 +418,11 @@ export class AllomoneySankeyDiagram {
     const view = this.layout();
     if (!view) return [];
     const chain = this.activeChain();
+    const sel = this.selected();
     return view.links.map((link) => ({
       ...link,
       dimmed: chain !== null && !chain.linkIds.has(link.id),
+      selected: sel?.kind === 'link' && sel.id === link.id,
       editLabel: `Edit flow ${link.a11yLabel}`,
     }));
   });
@@ -452,6 +469,37 @@ export class AllomoneySankeyDiagram {
   protected onLeave(): void {
     this.hovered.set(null);
     this.tooltipPos.set(null);
+  }
+
+  // --- selection (click to select, click again or click empty to clear) ----
+
+  /**
+   * Toggles selection of a node; no-op when the node cannot be changed (every
+   * `canEditNode*` is false). Always stops the click from clearing the selection
+   * via the canvas, so clicking a non-selectable node leaves any selection intact.
+   */
+  protected toggleSelectNode(id: number, event: MouseEvent): void {
+    event.stopPropagation();
+    if (!this.editingEnabled()) return;
+    const cur = this.selected();
+    this.selected.set(cur?.kind === 'node' && cur.id === id ? null : { kind: 'node', id });
+  }
+
+  /**
+   * Toggles selection of a link; no-op when the link cannot be changed (every
+   * `canEditLink*` is false). Always stops the click from clearing the selection
+   * via the canvas, so clicking a non-selectable link leaves any selection intact.
+   */
+  protected toggleSelectLink(link: LayoutLink, event: MouseEvent): void {
+    event.stopPropagation();
+    if (!this.linkEditingEnabled()) return;
+    const cur = this.selected();
+    this.selected.set(cur?.kind === 'link' && cur.id === link.id ? null : { kind: 'link', id: link.id });
+  }
+
+  /** Clears the selection (clicking empty canvas). */
+  protected clearSelection(): void {
+    this.selected.set(null);
   }
 
   // --- custom hover tooltip ------------------------------------------------
