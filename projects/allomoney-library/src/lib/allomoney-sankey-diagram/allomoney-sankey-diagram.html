@@ -72,15 +72,6 @@
                           dominant-baseline="middle">
                         {{ node.label }}
                     </text>
-                    @if (node.valueLabel !== null) {
-                        <text class="allomoney-sankey__node-value"
-                              [attr.x]="node.valueX"
-                              [attr.y]="node.valueY"
-                              text-anchor="middle"
-                              dominant-baseline="middle">
-                            {{ node.valueLabel }}
-                        </text>
-                    }
                 </g>
             }
         </g>

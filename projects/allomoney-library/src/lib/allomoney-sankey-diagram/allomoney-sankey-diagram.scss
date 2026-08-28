@@ -3,7 +3,6 @@
   // custom properties at runtime (no rebuild) to restyle the diagram. Renaming
   // one is a breaking change. Light theme is the default.
   --allomoney-label-color: #1a2233;
-  --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(0, 0, 0, 0.18);
   --allomoney-link-opacity: 0.45;
   // Opacity applied to elements outside the hovered chain (UC-2). Runtime-
@@ -11,7 +10,6 @@
   --allomoney-dim-opacity: 0.3;
   --allomoney-label-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --allomoney-label-size: 14px;
-  --allomoney-value-size: 15px;
 
   // UC-3 edit overlay theming (runtime-overridable like the others).
   --allomoney-edit-bg: #ffffff;
@@ -35,9 +33,6 @@
 
 :host([data-theme='dark']) {
   --allomoney-label-color: #e6ecf7;
-  // Node fills stay light/pastel in both themes, so the in-node value keeps a
-  // dark ink for AA contrast against them.
-  --allomoney-node-value-color: #1a2233;
   --allomoney-node-stroke: rgba(255, 255, 255, 0.22);
   --allomoney-link-opacity: 0.5;
 
@@ -153,12 +148,6 @@
 .allomoney-sankey__node-label {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
-}
-
-.allomoney-sankey__node-value {
-  fill: var(--allomoney-node-value-color);
-  font-size: var(--allomoney-value-size);
-  font-weight: 700;
 }
 
 .allomoney-sankey__link-value {

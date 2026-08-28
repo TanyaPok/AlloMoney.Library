@@ -23,9 +23,6 @@ export interface LayoutNode {
   readonly labelX: number;
   readonly labelY: number;
   readonly labelAnchor: 'start' | 'middle' | 'end';
-  /** Centered position for the in-node value label (when present). */
-  readonly valueX: number;
-  readonly valueY: number;
 }
 
 /** A link ribbon positioned by the layout engine. */
@@ -444,8 +441,6 @@ export function computeSankeyLayout(
       labelX: vertical ? canonLabelY : canonLabelX,
       labelY: vertical ? canonLabelX : canonLabelY,
       labelAnchor: vertical ? 'middle' : 'end',
-      valueX: x + nodeW / 2,
-      valueY: y + nodeH / 2,
     };
   });
 
