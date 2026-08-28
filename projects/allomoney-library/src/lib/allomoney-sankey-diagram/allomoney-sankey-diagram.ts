@@ -12,7 +12,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { ALLOMONEY_LIBRARY_CONFIG } from '../config/allomoney-library-config';
-import type { SankeyData, SankeyTheme } from './models/sankey-data';
+import type {
+  SankeyData,
+  SankeyOptions,
+  SankeyOrientation,
+  SankeyTheme,
+} from './models/sankey-data';
 import {
   computeSankeyLayout,
   type LayoutLink,
@@ -113,7 +118,7 @@ let uidCounter = 0;
  *
  * @example
  * ```html
- * <allomoney-sankey-diagram [dataSource]="flows()" theme="dark" />
+ * <allomoney-sankey-diagram [dataSource]="flows()" [options]="{ theme: 'dark' }" />
  * ```
  */
 @Component({
@@ -148,22 +153,105 @@ export class AllomoneySankeyDiagram {
   readonly dataSource = model<SankeyData | undefined | null>(undefined);
 
   /**
-   * Visual theme. Falls back to the library-wide `defaultTheme` configured via
-   * `provideAlloMoneyLibrary()` when not set on the element.
+   * Presentation options (theme, currency formatting, flow orientation) kept
+   * separate from the {@link dataSource} graph. Defaults to an empty object, so
+   * every field falls back to its documented default when omitted.
    */
-  readonly theme = input<SankeyTheme>(this.config.defaultTheme);
+  readonly options = input<SankeyOptions>({});
+
+  // theme / currency / orientation can be set two ways: as a dedicated element
+  // input (`[theme]="'dark'"`) or through {@link options}. When both are
+  // supplied the `options` value wins; otherwise the input applies, and when
+  // neither is set each falls back to its documented default. The `…Input`
+  // signals hold the raw element input; the like-named `computed`s expose the
+  // resolved value used everywhere else.
+
+  /** Raw `[theme]` element input (see resolved {@link theme}). */
+  readonly themeInput = input<SankeyTheme | undefined>(undefined, { alias: 'theme' });
+  /** Raw `[currency]` element input (see resolved {@link currency}). */
+  readonly currencyInput = input<string | null | undefined>(undefined, { alias: 'currency' });
+  /** Raw `[orientation]` element input (see resolved {@link orientation}). */
+  readonly orientationInput = input<SankeyOrientation | undefined>(undefined, {
+    alias: 'orientation',
+  });
 
   /**
-   * When `true`, a user may edit each node's name by double-clicking it
-   * Defaults to `false` (read-only).
+   * The resolved visual theme: {@link options}`.theme` when set, else the
+   * `[theme]` input, else the library-wide `defaultTheme` configured via
+   * `provideAlloMoneyLibrary()`. Drives the host `data-theme` attribute and the
+   * generated palette.
    */
-  readonly canEditNodeName = input(false, { transform: booleanAttribute });
+  protected readonly theme = computed<SankeyTheme>(
+    () => this.options().theme ?? this.themeInput() ?? this.config.defaultTheme,
+  );
 
   /**
-   * When `true`, a user may edit each node's value by double-clicking it
-   * Defaults to `false` (read-only).
+   * The resolved ISO 4217 currency code (or `null` for plain numbers):
+   * {@link options}`.currency` when set, else the `[currency]` input, else
+   * `null`.
    */
-  readonly canEditNodeValue = input(false, { transform: booleanAttribute });
+  protected readonly currency = computed<string | null>(
+    () => this.options().currency ?? this.currencyInput() ?? null,
+  );
+
+  /**
+   * The resolved flow direction: {@link options}`.orientation` when set, else
+   * the `[orientation]` input, else `'horizontal'`.
+   */
+  protected readonly orientation = computed<SankeyOrientation>(
+    () => this.options().orientation ?? this.orientationInput() ?? 'horizontal',
+  );
+
+  // Edit flags can be set two ways: as a dedicated element input
+  // (`[canEditNodeName]="true"`) or through {@link options}. When both are
+  // supplied the `options` value wins; otherwise the input value applies, and a
+  // missing value defaults to `false` (read-only). The `…Input` signals hold the
+  // raw element input; the like-named `computed`s expose the resolved value used
+  // everywhere else.
+
+  /** Raw `[canEditNodeName]` element input (see resolved {@link canEditNodeName}). */
+  readonly canEditNodeNameInput = input(false, {
+    alias: 'canEditNodeName',
+    transform: booleanAttribute,
+  });
+  /** Raw `[canEditNodeValue]` element input (see resolved {@link canEditNodeValue}). */
+  readonly canEditNodeValueInput = input(false, {
+    alias: 'canEditNodeValue',
+    transform: booleanAttribute,
+  });
+  /** Raw `[canEditLinkValue]` element input (see resolved {@link canEditLinkValue}). */
+  readonly canEditLinkValueInput = input(false, {
+    alias: 'canEditLinkValue',
+    transform: booleanAttribute,
+  });
+  /** Raw `[canEditLinkSource]` element input (see resolved {@link canEditLinkSource}). */
+  readonly canEditLinkSourceInput = input(false, {
+    alias: 'canEditLinkSource',
+    transform: booleanAttribute,
+  });
+  /** Raw `[canEditLinkTarget]` element input (see resolved {@link canEditLinkTarget}). */
+  readonly canEditLinkTargetInput = input(false, {
+    alias: 'canEditLinkTarget',
+    transform: booleanAttribute,
+  });
+
+  /**
+   * When `true`, a user may edit each node's name by double-clicking it.
+   * {@link options}`.canEditNodeName` when set, else the `[canEditNodeName]`
+   * input; defaults to `false` (read-only).
+   */
+  protected readonly canEditNodeName = computed(
+    () => this.options().canEditNodeName ?? this.canEditNodeNameInput(),
+  );
+
+  /**
+   * When `true`, a user may edit each node's value by double-clicking it.
+   * {@link options}`.canEditNodeValue` when set, else the `[canEditNodeValue]`
+   * input; defaults to `false` (read-only).
+   */
+  protected readonly canEditNodeValue = computed(
+    () => this.options().canEditNodeValue ?? this.canEditNodeValueInput(),
+  );
 
   /** `true` when at least one node element is editable (UC-3 extension 1.a). */
   protected readonly editingEnabled = computed(
@@ -171,19 +259,31 @@ export class AllomoneySankeyDiagram {
   );
 
   /**
-   * When `true`, a user may edit each link's value by double-clicking it
+   * When `true`, a user may edit each link's value by double-clicking it.
+   * {@link options}`.canEditLinkValue` when set, else the `[canEditLinkValue]`
+   * input; defaults to `false`.
    */
-  readonly canEditLinkValue = input(false, { transform: booleanAttribute });
+  protected readonly canEditLinkValue = computed(
+    () => this.options().canEditLinkValue ?? this.canEditLinkValueInput(),
+  );
 
   /**
-   * When `true`, a user may re-point each link's source to another node
+   * When `true`, a user may re-point each link's source to another node.
+   * {@link options}`.canEditLinkSource` when set, else the `[canEditLinkSource]`
+   * input; defaults to `false`.
    */
-  readonly canEditLinkSource = input(false, { transform: booleanAttribute });
+  protected readonly canEditLinkSource = computed(
+    () => this.options().canEditLinkSource ?? this.canEditLinkSourceInput(),
+  );
 
   /**
-   * When `true`, a user may re-point each link's target to another node
+   * When `true`, a user may re-point each link's target to another node.
+   * {@link options}`.canEditLinkTarget` when set, else the `[canEditLinkTarget]`
+   * input; defaults to `false`.
    */
-  readonly canEditLinkTarget = input(false, { transform: booleanAttribute });
+  protected readonly canEditLinkTarget = computed(
+    () => this.options().canEditLinkTarget ?? this.canEditLinkTargetInput(),
+  );
 
   /** `true` when at least one link element is editable (UC-4 extension 1.a). */
   protected readonly linkEditingEnabled = computed(
@@ -202,14 +302,12 @@ export class AllomoneySankeyDiagram {
   protected readonly layout = computed<SankeyLayout | null>(() => {
     const validation = this.validation();
     if (validation.isEmptyState) return null;
-    const data = this.dataSource();
-    const orientation = data?.orientation ?? 'horizontal';
     return computeSankeyLayout(
       validation.nodes,
       validation.links,
       this.theme(),
-      orientation,
-      data?.currency ?? null,
+      this.orientation(),
+      this.currency(),
     );
   });
 

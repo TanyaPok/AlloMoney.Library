@@ -14,8 +14,11 @@
     <article class="demo__card demo__card--light">
       <h2>Light theme</h2>
       <allomoney-sankey-diagram
-        [dataSource]="data()"
-        (dataSourceChange)="data.set($event)"
+        [dataSource]="data1()"
+        (dataSourceChange)="data1.set($event)"
+        [options]="options1()"
+        [theme]="'light'"
+        [orientation]="'horizontal'"
         [canEditNodeName]="true"
         [canEditNodeValue]="true"
         [canEditLinkValue]="true"
@@ -27,14 +30,9 @@
     <article class="demo__card demo__card--dark">
       <h2>Dark theme</h2>
       <allomoney-sankey-diagram
-        [dataSource]="data()"
-        (dataSourceChange)="data.set($event)"
-        theme="dark"
-        [canEditNodeName]="true"
-        [canEditNodeValue]="true"
-        [canEditLinkValue]="true"
-        [canEditLinkSource]="true"
-        [canEditLinkTarget]="true"
+        [dataSource]="data2()"
+        (dataSourceChange)="data2.set($event)"
+        [options]="options2()"
       />
     </article>
   </section>

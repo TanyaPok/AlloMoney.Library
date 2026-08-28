@@ -47,12 +47,28 @@ export interface SankeyLink {
 /**
  * The complete data set rendered by {@link AllomoneySankeyDiagram}.
  *
+ * Carries only the graph itself — the `nodes` and `links`. Presentation
+ * concerns (currency formatting, flow orientation) live in {@link SankeyOptions},
+ * supplied through the component's separate `options` input.
+ *
  * An empty (or `undefined`) data set causes the component to render its
  * themed empty state instead of a diagram.
  */
 export interface SankeyData {
   readonly nodes: readonly SankeyNode[];
   readonly links: readonly SankeyLink[];
+}
+
+/**
+ * Presentation options for {@link AllomoneySankeyDiagram}, supplied through the
+ * component's `options` input separately from the {@link SankeyData} graph.
+ */
+export interface SankeyOptions {
+  /**
+   * Visual theme. When omitted, falls back to the library-wide `defaultTheme`
+   * configured via `provideAlloMoneyLibrary()`.
+   */
+  readonly theme?: SankeyTheme;
   /**
    * Optional ISO 4217 currency code. When set, node and link values are
    * formatted as currency in the host locale (e.g. `"$10.00"`); otherwise a
@@ -64,6 +80,31 @@ export interface SankeyData {
    * Flow direction of the diagram. Defaults to `'horizontal'` when omitted.
    */
   readonly orientation?: SankeyOrientation;
+  /**
+   * When `true`, a user may edit each node's name by double-clicking it.
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditNodeName?: boolean;
+  /**
+   * When `true`, a user may edit each node's value by double-clicking it.
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditNodeValue?: boolean;
+  /**
+   * When `true`, a user may edit each link's value by double-clicking it.
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditLinkValue?: boolean;
+  /**
+   * When `true`, a user may re-point each link's source to another node.
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditLinkSource?: boolean;
+  /**
+   * When `true`, a user may re-point each link's target to another node.
+   * Defaults to `false` (read-only).
+   */
+  readonly canEditLinkTarget?: boolean;
 }
 
 /**

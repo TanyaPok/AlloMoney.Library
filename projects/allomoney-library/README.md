@@ -41,7 +41,7 @@ import { AllomoneySankeyDiagram, type SankeyData } from 'allomoney-library';
 @Component({
   selector: 'app-root',
   imports: [AllomoneySankeyDiagram],
-  template: `<allomoney-sankey-diagram [data]="flows()" theme="dark" />`,
+  template: `<allomoney-sankey-diagram [data]="flows()" [options]="{ theme: 'dark' }" />`,
 })
 export class App {
   readonly flows = signal<SankeyData>({
@@ -63,8 +63,10 @@ instead of a diagram.
 
 ## Theming
 
-Pass `theme="light"` or `theme="dark"` (or set a library-wide default via
-`provideAlloMoneyLibrary({ defaultTheme })`). The light/dark empty-state
+Pass `theme="light"` / `theme="dark"` (or the `options` form
+`[options]="{ theme: 'dark' }"`, which wins if both are set), or set a
+library-wide default via `provideAlloMoneyLibrary({ defaultTheme })`. The
+light/dark empty-state
 placeholders are **embedded inline** in the component's CSS as data-URIs —
 **zero configuration required**, nothing to copy into your build.
 
@@ -74,8 +76,19 @@ placeholders are **embedded inline** in the component's CSS as data-URIs —
 
 | Input   | Type                      | Default               | Description                                                        |
 | ------- | ------------------------- | --------------------- | ------------------------------------------------------------------ |
-| `data`  | `SankeyData \| undefined` | `undefined`           | Nodes + links to render. Empty/undefined shows the empty state.    |
-| `theme` | `'light' \| 'dark'`       | config `defaultTheme` | Visual theme; also selects the light/dark empty-state placeholder. |
+| `data`    | `SankeyData \| undefined` | `undefined`           | Nodes + links to render. Empty/undefined shows the empty state.    |
+| `options` | `SankeyOptions`           | `{}`                  | Presentation options and edit flags, kept separate from the graph. Any field set here overrides the matching element input below. |
+| `theme` | `'light' \| 'dark'` | config `defaultTheme` | Visual theme; also selects the light/dark empty-state placeholder. |
+| `currency` | `string \| null` | `null` | ISO 4217 code; formats node/link values as currency, else plain numbers. |
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Flow direction. |
+| `canEditNodeName` / `canEditNodeValue` | `boolean` | `false` | Allow editing a node's name / value by double-click. |
+| `canEditLinkValue` / `canEditLinkSource` / `canEditLinkTarget` | `boolean` | `false` | Allow editing a link's value / re-pointing its source / target. |
+
+Every field in `options` — `theme`, `currency`, `orientation`, and the five
+`canEdit*` flags — can be set **either** as an element input (`[theme]="'dark'"`,
+`[canEditNodeName]="true"`) **or** through `options`
+(`{ theme: 'dark', canEditNodeName: true }`). When both are supplied for the same
+field, the **`options` value wins**.
 
 ### Outputs
 
@@ -90,7 +103,7 @@ placeholders are **embedded inline** in the component's CSS as data-URIs —
 
 ### Exported types
 
-`SankeyData`, `SankeyNode`, `SankeyLink`, `SankeyTheme`,
+`SankeyData`, `SankeyOptions`, `SankeyNode`, `SankeyLink`, `SankeyTheme`,
 `AlloMoneyLibraryConfig`, `provideAlloMoneyLibrary`, `ALLOMONEY_LIBRARY_CONFIG`.
 
 ## Compatibility
