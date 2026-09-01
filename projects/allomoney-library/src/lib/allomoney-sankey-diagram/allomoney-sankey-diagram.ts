@@ -208,6 +208,10 @@ export class AllomoneySankeyDiagram {
   readonly orientationInput = input<SankeyOrientation | undefined>(undefined, {
     alias: 'orientation',
   });
+  /** Raw `[noDataMessage]` element input (see resolved {@link noDataMessage}). */
+  readonly noDataMessageInput = input<string | undefined>(undefined, {
+    alias: 'noDataMessage',
+  });
   /** Raw `[width]` element input in px (see resolved {@link dimensions}). */
   readonly widthInput = input<number | null | undefined>(undefined, {
     alias: 'width',
@@ -244,6 +248,16 @@ export class AllomoneySankeyDiagram {
    */
   protected readonly orientation = computed<SankeyOrientation>(
     () => this.options().orientation ?? this.orientationInput() ?? 'horizontal',
+  );
+
+  /**
+   * The resolved empty-state message: {@link options}`.noDataMessage` when set,
+   * else the `[noDataMessage]` input, else `'No Data'`. Rendered through
+   * interpolation (auto-escaped), so any markup is shown literally and cannot
+   * execute — no HTML/script can be injected through it.
+   */
+  protected readonly noDataMessage = computed<string>(
+    () => this.options().noDataMessage ?? this.noDataMessageInput() ?? 'No Data',
   );
 
   /**

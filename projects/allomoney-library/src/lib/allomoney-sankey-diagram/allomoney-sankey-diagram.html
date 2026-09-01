@@ -2,8 +2,8 @@
     <div class="allomoney-sankey__empty"
          role="status"
          aria-live="polite"
-         aria-label="No flows to display yet">
-        <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
+         [attr.aria-label]="noDataMessage()">
+        <div class="allomoney-sankey__empty-art" aria-hidden="true">{{ noDataMessage() }}</div>
     </div>
 } @else {
     @let view = layout()!;

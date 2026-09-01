@@ -117,6 +117,12 @@ export interface SankeyOptions {
    * Defaults to `false` (read-only).
    */
   readonly canEditLinkTarget?: boolean;
+  /**
+   * Message shown in the empty state when there are no flows to display.
+   * Rendered as auto-escaped text (never as HTML), so any markup in the string
+   * is shown literally and cannot execute. Defaults to `"No Data"`.
+   */
+  readonly noDataMessage?: string;
 }
 
 /**

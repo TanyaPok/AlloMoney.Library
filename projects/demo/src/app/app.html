@@ -1,39 +1,44 @@
 <main class="demo">
-  <h1>{{ title() }}</h1>
-  <p class="demo__hint">
-    Both cards render the UC-1 reference payload as a value-proportional Sankey
-    diagram — light and dark themes from the same shared data, zero consumer
-    config. Hover a node or flow to highlight its chain and dim the rest (UC-2).
-    Double-click a node to edit its name and value (UC-3), or double-click a
-    flow to edit its value and re-point its source/target (UC-4). Press Enter/F2
-    when an element is focused for keyboard access. Changes flow back through the
-    two-way <code>[(dataSource)]</code> binding and update both cards.
-  </p>
+    <h1>{{ title() }}</h1>
+    <p class="demo__hint">
+        Both cards render the UC-1 reference payload as a value-proportional Sankey
+        diagram — light and dark themes from the same shared data, zero consumer
+        config. Hover a node or flow to highlight its chain and dim the rest (UC-2).
+        Double-click a node to edit its name and value (UC-3), or double-click a
+        flow to edit its value and re-point its source/target (UC-4). Press Enter/F2
+        when an element is focused for keyboard access. Changes flow back through the
+        two-way <code>[(dataSource)]</code> binding and update both cards.
+    </p>
 
-  <section class="demo__grid">
-    <article class="demo__card demo__card--light">
-      <h2>Light theme</h2>
-      <allomoney-sankey-diagram
-        [dataSource]="data1()"
-        (dataSourceChange)="data1.set($event)"
-        [options]="options1()"
-        [theme]="'light'"
-        [orientation]="'horizontal'"
-        [canEditNodeName]="true"
-        [canEditNodeValue]="true"
-        [canEditLinkValue]="true"
-        [canEditLinkSource]="true"
-        [canEditLinkTarget]="true"
-      />
-    </article>
+    <section class="demo__grid">
+        <article class="demo__card">
+            <h2>Test</h2>
+            <allomoney-sankey-diagram [noDataMessage]="'No uploaded data'" [theme]="'dark'"/>
+        </article>
 
-    <article class="demo__card demo__card--dark">
-      <h2>Dark theme</h2>
-      <allomoney-sankey-diagram
-        [dataSource]="data2()"
-        (dataSourceChange)="data2.set($event)"
-        [options]="options2()"
-      />
-    </article>
-  </section>
+        <article class="demo__card">
+            <h2>Light theme</h2>
+            <allomoney-sankey-diagram
+                    [dataSource]="data1()"
+                    (dataSourceChange)="data1.set($event)"
+                    [options]="options1()"
+                    [theme]="'light'"
+                    [orientation]="'horizontal'"
+                    [canEditNodeName]="true"
+                    [canEditNodeValue]="true"
+                    [canEditLinkValue]="true"
+                    [canEditLinkSource]="true"
+                    [canEditLinkTarget]="true"
+            />
+        </article>
+
+        <article class="demo__card">
+            <h2>Dark theme</h2>
+            <allomoney-sankey-diagram
+                    [dataSource]="data2()"
+                    (dataSourceChange)="data2.set($event)"
+                    [options]="options2()"
+            />
+        </article>
+    </section>
 </main>

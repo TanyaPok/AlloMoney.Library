@@ -24,17 +24,25 @@
   --allomoney-tooltip-border: #b7c0d0;
   --allomoney-tooltip-muted: #5a6785;
 
+  // Component surface: the diagram paints its own themed background and text
+  // colour so it is self-contained — a consumer no longer needs a themed
+  // wrapper around it. Runtime-overridable like the other --allomoney-* tokens.
+  --allomoney-surface: #ffffff;
+
   display: block;
   position: relative;
   inline-size: 100%;
   min-block-size: 200px;
   container-type: inline-size;
+  background: var(--allomoney-surface);
+  color: var(--allomoney-label-color);
 }
 
 :host([data-theme='dark']) {
   --allomoney-label-color: #e6ecf7;
   --allomoney-node-stroke: rgba(255, 255, 255, 0.22);
   --allomoney-link-opacity: 0.5;
+  --allomoney-surface: #0d1320;
 
   --allomoney-edit-bg: #232a38;
   --allomoney-edit-fg: #e6ecf7;
@@ -72,6 +80,17 @@
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
+
+  // The message text is drawn over the themed placeholder art. Colour it from
+  // the theme-aware label token so it stays legible (WCAG AA) in BOTH light and
+  // dark — the token flips with the host data-theme via the same mechanism as
+  // the diagram labels, so the message honours the resolved theme value.
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: var(--allomoney-label-color);
+  font-family: var(--allomoney-label-font);
+  font-size: var(--allomoney-label-size);
 
   // The two placeholder SVGs are referenced by URL here. ng-packagr inlines
   // them as data-URIs at build time, so consumers need ZERO angular.json
