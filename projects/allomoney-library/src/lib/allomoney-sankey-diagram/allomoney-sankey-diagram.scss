@@ -8,8 +8,14 @@
   // Opacity applied to elements outside the hovered chain (UC-2). Runtime-
   // overridable like the other --allomoney-* theming variables.
   --allomoney-dim-opacity: 0.3;
-  --allomoney-label-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --allomoney-label-size: 14px;
+  --allomoney-label-font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  // Node/link label size; the empty-state message uses its own size below.
+  --allomoney-label-size: 12px;
+  // Empty-state ("no data") message size.
+  --allomoney-message-size: 14px;
+  // Shared label weight/tracking applied to the diagram text and message.
+  --allomoney-label-weight: 500;
+  --allomoney-label-tracking: 0.6px;
 
   // UC-3 edit overlay theming (runtime-overridable like the others).
   --allomoney-edit-bg: #ffffff;
@@ -90,7 +96,9 @@
   justify-content: center;
   color: var(--allomoney-label-color);
   font-family: var(--allomoney-label-font);
-  font-size: var(--allomoney-label-size);
+  font-size: var(--allomoney-message-size);
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
 
   // The two placeholder SVGs are referenced by URL here. ng-packagr inlines
   // them as data-URIs at build time, so consumers need ZERO angular.json
@@ -199,12 +207,15 @@
 .allomoney-sankey__node-label {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
 }
 
 .allomoney-sankey__link-value {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
-  font-weight: 700;
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
 }
 
 // Visually-hidden text alternative — present for assistive tech, invisible on
