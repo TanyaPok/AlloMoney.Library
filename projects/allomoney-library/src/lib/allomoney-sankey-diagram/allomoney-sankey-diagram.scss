@@ -64,6 +64,11 @@
 
 // --- Empty state ----------------------------------
 .allomoney-sankey__empty {
+  // border-box so the 1rem padding is drawn INSIDE the 100% width/height rather
+  // than added to it. With the default content-box, `inline-size: 100%` + padding
+  // overflows the host by 32px (a horizontal scrollbar) and the box is never
+  // truly 100% — it is 100% + padding on both axes.
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -77,12 +82,23 @@
 }
 
 .allomoney-sankey__empty-art {
-  // Stretch to fill the component's width (matching the diagram); the SVG is
-  // centered with `contain`, so it scales up without distortion.
+  // One universal rule for every width/height combination: the art lives in a
+  // box bounded by the SVG's intrinsic size (480×260), and `background-size:
+  // contain` scales the illustration to fit that box without distortion or
+  // overflow. This holds whether width, height, both, or neither is set:
+  //   - The box never exceeds 480×260, so an unsized (full-width) host, or a
+  //     very tall/wide one, can't blow the art up or produce scrollbars — and an
+  //     explicit height leaves the art a constant size, the parent column just
+  //     centering it in the extra space.
+  //   - `inline-size: 100%` + `flex: 1 1 auto` let it shrink to fit a smaller
+  //     host, and `contain` keeps the illustration proportional at any size.
+  // The message, pinned to the bottom of this bounded box, therefore stays with
+  // the illustration instead of drifting to the bottom of a taller host.
   flex: 1 1 auto;
   inline-size: 100%;
-  max-inline-size: none;
+  max-inline-size: 480px;
   min-block-size: 160px;
+  max-block-size: 260px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
