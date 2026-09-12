@@ -170,7 +170,6 @@ function separateLabelBands(
 /** Mutable bookkeeping used only inside this module during layout. */
 interface WorkNode {
   readonly node: ValidNode;
-  readonly index: number; // input order — drives the palette
   rank: number;
   magnitude: number;
   x: number;
@@ -236,16 +235,28 @@ export function computeSankeyLayout(
   const format = makeValueFormatter(currency);
   const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minThickness, minLabelGap } = options;
 
-  const palette = generatePalette(nodes.length, theme);
-  const work: WorkNode[] = nodes.map((node, index) => ({
+  // A colour set directly on a node is reserved: the auto palette must never
+  // reproduce it for another node. Two nodes only share a colour when both set
+  // it explicitly. So we drop any generated colour that collides with an
+  // explicit one and hand the survivors out to the auto-coloured nodes in
+  // order. Generate a few extra (one per explicit colour) so skipping never
+  // leaves an auto node short.
+  const explicitColors = new Set<string>();
+  for (const node of nodes) {
+    if (node.color != null) explicitColors.add(node.color);
+  }
+  const autoPalette = generatePalette(nodes.length + explicitColors.size, theme)
+    .filter((color) => !explicitColors.has(color));
+
+  let autoCursor = 0;
+  const work: WorkNode[] = nodes.map((node) => ({
     node,
-    index,
     rank: 0,
     magnitude: 0,
     x: 0,
     y: 0,
     height: 0,
-    color: node.color ?? palette[index],
+    color: node.color ?? autoPalette[autoCursor++],
   }));
   const byId = new Map<number, WorkNode>(work.map((w) => [w.node.id, w]));
 
