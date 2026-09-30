@@ -10,35 +10,5 @@
         two-way <code>[(dataSource)]</code> binding and update both cards.
     </p>
 
-    <section class="demo__grid">
-        <article class="demo__card">
-            <h2>Test</h2>
-            <allomoney-sankey-diagram [noDataMessage]="'No uploaded data'" [theme]="'dark'"/>
-        </article>
-
-        <article class="demo__card">
-            <h2>Light theme</h2>
-            <allomoney-sankey-diagram
-                    [dataSource]="data1()"
-                    (dataSourceChange)="data1.set($event)"
-                    [options]="options1()"
-                    [theme]="'light'"
-                    [orientation]="'horizontal'"
-                    [canEditNodeName]="true"
-                    [canEditNodeValue]="true"
-                    [canEditLinkValue]="true"
-                    [canEditLinkSource]="true"
-                    [canEditLinkTarget]="true"
-            />
-        </article>
-
-        <article class="demo__card">
-            <h2>Dark theme</h2>
-            <allomoney-sankey-diagram
-                    [dataSource]="data2()"
-                    (dataSourceChange)="data2.set($event)"
-                    [options]="options2()"
-            />
-        </article>
-    </section>
+    <allomoney-sankey-diagram [options]="options" [dataSource]="data()" (dataSourceChange)="data.set($event)"/>
 </main>

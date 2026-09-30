@@ -11,62 +11,36 @@ import {AllomoneySankeyDiagram, type SankeyData, type SankeyOptions} from 'allom
 export class App {
     protected readonly title = signal('AlloMoney Library demo');
 
-    /**
-     * The UC-1 reference payload from REQUIREMENTS.md (business rule 2). Node 2
-     * has no name (falls back to its id) and no value (derived from links);
-     * nodes 0 and 3 carry an explicit "total deposit".
-     */
-    protected readonly data1 = signal<SankeyData | null | undefined>({
+    protected readonly data = signal<SankeyData | null | undefined>({
         nodes: [
-            {id: 0, name: 'Account 0', value: 10.0},
-            {id: 1, name: 'Account 1'},
+            {id: 0},
+            {id: 1},
             {id: 2},
-            {id: 3, name: 'Account 3'},
-            {id: 4, name: 'Account 3'}
+            {id: 3},
+            {id: 4},
+            ...Array.from({length: 123}, (_, i) => ({
+                id: i + 5
+            }))
         ],
         links: [
-            {source: 0, target: 2, value: 5.5},
-            {source: 0, target: 3, value: 4.5},
-            {source: 1, target: 2, value: 0.5},
-            {source: 2, target: 4, value: 10},
-            {source: 3, target: 4, value: 4}
+            {source: 0, target: 1, value: 100},
+            {source: 2, target: 1, value: 10},
+            {source: 3, target: 1, value: 23.50},
+            {source: 1, target: 4, value: 100},
+            ...Array.from({length: 123}, (_, i) => ({
+                source: i + 5,
+                target: i + 6,
+                value: 5
+            }))
         ]
     });
 
-    protected readonly data2 = signal<SankeyData | null | undefined>({
-        nodes: [
-            {id: 0, name: 'Account 0', value: 10.0},
-            {id: 1, name: 'Account 1'},
-            {id: 2},
-            {id: 3, name: 'Account 3'},
-            {id: 4, name: 'Account 3'}
-        ],
-        links: [
-            {source: 0, target: 2, value: 5.5},
-            {source: 0, target: 3, value: 4.5},
-            {source: 1, target: 2, value: 0.5},
-            {source: 2, target: 4, value: 10},
-            {source: 3, target: 4, value: 4}
-        ]
-    });
-
-    /** Presentation options for the light card (horizontal, the default). */
-    protected readonly options1 = signal<SankeyOptions>({
-        currency: 'CAD',
-        canEditNodeName: false,
-        canEditNodeValue: false
-    });
-
-    /** Presentation options for the dark card (dark theme, vertical flow). */
-    protected readonly options2 = signal<SankeyOptions>({
-        theme: 'dark',
-        currency: 'JPY',
-        orientation: 'vertical',
-        canEditNodeName: true,
-        canEditNodeValue: true,
-        canEditLinkValue: true,
-        canEditLinkSource: true,
-        canEditLinkTarget: true,
-        width: 850.50
-    });
+    options: SankeyOptions = {
+        theme: "light",
+        noDataMessage: "No Money Flow Data",
+        orientation: "horizontal",
+        height: 1500
+        //horizontalScrolling: false,
+        //verticalScrolling: true
+    };
 }

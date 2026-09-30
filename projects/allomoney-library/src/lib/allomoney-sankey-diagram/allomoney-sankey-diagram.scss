@@ -128,12 +128,61 @@
 }
 
 // --- Diagram -------------------------------------------------------------
-.allomoney-sankey__canvas {
-  display: block;
+// Scroll viewport for the canvas. By default both axes may scroll so the diagram
+// can stay at its natural (1:1) size and remain legible; turning an axis off
+// (host modifiers below) contains that axis instead — the canvas is scaled down
+// to fit and the scrollbar is hidden.
+.allomoney-sankey__scroll {
   inline-size: 100%;
   block-size: 100%;
   min-block-size: 200px;
+  overflow: auto;
+}
+
+.allomoney-sankey__canvas {
+  display: block;
+  // Natural (1:1) size published by the component as --allomoney-natural-w/h.
+  // Width is pinned to the natural width and height follows from the viewBox
+  // aspect ratio, so the diagram renders at native size (and scrolls) without
+  // ever distorting or upscaling. The fit rules below cap it down when an axis
+  // has scrolling disabled.
+  inline-size: var(--allomoney-natural-w, 100%);
+  block-size: auto;
+  margin-inline: auto; // center when the diagram is narrower than the viewport
   font-family: var(--allomoney-label-font);
+}
+
+// Horizontal scrolling off: scale the diagram down to fit the container width
+// (never up) and hide the horizontal scrollbar.
+:host(.allomoney-sankey--no-hscroll) .allomoney-sankey__scroll {
+  overflow-x: hidden;
+}
+:host(.allomoney-sankey--no-hscroll) .allomoney-sankey__canvas {
+  max-inline-size: 100%;
+}
+
+// Vertical scrolling off: cap the height to the viewport, keeping aspect ratio,
+// and hide the vertical scrollbar. This only bites when the height is bounded
+// (an explicit height, or a height-constrained parent); otherwise the diagram
+// keeps its natural height.
+:host(.allomoney-sankey--no-vscroll) .allomoney-sankey__scroll {
+  overflow-y: hidden;
+}
+:host(.allomoney-sankey--no-vscroll) .allomoney-sankey__canvas {
+  aspect-ratio: var(--allomoney-natural-w) / var(--allomoney-natural-h);
+  inline-size: auto;
+  block-size: auto;
+  max-block-size: 100%;
+}
+
+// Both axes off: contain the whole diagram within the viewport box. The SVG's
+// own preserveAspectRatio keeps it undistorted (letterboxed) inside the box.
+:host(.allomoney-sankey--no-hscroll.allomoney-sankey--no-vscroll) .allomoney-sankey__canvas {
+  aspect-ratio: auto;
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: 100%;
+  max-block-size: 100%;
 }
 
 .allomoney-sankey__link {
