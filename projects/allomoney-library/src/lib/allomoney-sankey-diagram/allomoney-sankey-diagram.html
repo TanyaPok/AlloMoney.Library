@@ -2,11 +2,12 @@
     <div class="allomoney-sankey__empty"
          role="status"
          aria-live="polite"
-         aria-label="No flows to display yet">
-        <div class="allomoney-sankey__empty-art" aria-hidden="true"></div>
+         [attr.aria-label]="noDataMessage()">
+        <div class="allomoney-sankey__empty-art" aria-hidden="true">{{ noDataMessage() }}</div>
     </div>
 } @else {
     @let view = layout()!;
+    <div class="allomoney-sankey__scroll">
     <svg class="allomoney-sankey__canvas"
          [attr.viewBox]="'0 0 ' + view.width + ' ' + view.height"
          preserveAspectRatio="xMidYMid meet"
@@ -220,6 +221,7 @@
             </foreignObject>
         }
     </svg>
+    </div>
 
     <!-- Custom hover tooltip. Themed with the component (data-theme), it tracks
          the pointer and flips near the host edges. Nodes show only their value;

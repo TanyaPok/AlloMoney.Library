@@ -8,8 +8,14 @@
   // Opacity applied to elements outside the hovered chain (UC-2). Runtime-
   // overridable like the other --allomoney-* theming variables.
   --allomoney-dim-opacity: 0.3;
-  --allomoney-label-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --allomoney-label-size: 14px;
+  --allomoney-label-font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  // Node/link label size; the empty-state message uses its own size below.
+  --allomoney-label-size: 12px;
+  // Empty-state ("no data") message size.
+  --allomoney-message-size: 14px;
+  // Shared label weight/tracking applied to the diagram text and message.
+  --allomoney-label-weight: 500;
+  --allomoney-label-tracking: 0.6px;
 
   // UC-3 edit overlay theming (runtime-overridable like the others).
   --allomoney-edit-bg: #ffffff;
@@ -24,17 +30,25 @@
   --allomoney-tooltip-border: #b7c0d0;
   --allomoney-tooltip-muted: #5a6785;
 
+  // Component surface: the diagram paints its own themed background and text
+  // colour so it is self-contained — a consumer no longer needs a themed
+  // wrapper around it. Runtime-overridable like the other --allomoney-* tokens.
+  --allomoney-surface: #ffffff;
+
   display: block;
   position: relative;
   inline-size: 100%;
   min-block-size: 200px;
   container-type: inline-size;
+  background: var(--allomoney-surface);
+  color: var(--allomoney-label-color);
 }
 
 :host([data-theme='dark']) {
   --allomoney-label-color: #e6ecf7;
   --allomoney-node-stroke: rgba(255, 255, 255, 0.22);
   --allomoney-link-opacity: 0.5;
+  --allomoney-surface: #0d1320;
 
   --allomoney-edit-bg: #232a38;
   --allomoney-edit-fg: #e6ecf7;
@@ -50,6 +64,11 @@
 
 // --- Empty state ----------------------------------
 .allomoney-sankey__empty {
+  // border-box so the 1rem padding is drawn INSIDE the 100% width/height rather
+  // than added to it. With the default content-box, `inline-size: 100%` + padding
+  // overflows the host by 32px (a horizontal scrollbar) and the box is never
+  // truly 100% — it is 100% + padding on both axes.
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -63,15 +82,39 @@
 }
 
 .allomoney-sankey__empty-art {
-  // Stretch to fill the component's width (matching the diagram); the SVG is
-  // centered with `contain`, so it scales up without distortion.
+  // One universal rule for every width/height combination: the art lives in a
+  // box bounded by the SVG's intrinsic size (480×260), and `background-size:
+  // contain` scales the illustration to fit that box without distortion or
+  // overflow. This holds whether width, height, both, or neither is set:
+  //   - The box never exceeds 480×260, so an unsized (full-width) host, or a
+  //     very tall/wide one, can't blow the art up or produce scrollbars — and an
+  //     explicit height leaves the art a constant size, the parent column just
+  //     centering it in the extra space.
+  //   - `inline-size: 100%` + `flex: 1 1 auto` let it shrink to fit a smaller
+  //     host, and `contain` keeps the illustration proportional at any size.
+  // The message, pinned to the bottom of this bounded box, therefore stays with
+  // the illustration instead of drifting to the bottom of a taller host.
   flex: 1 1 auto;
   inline-size: 100%;
-  max-inline-size: none;
+  max-inline-size: 480px;
   min-block-size: 160px;
+  max-block-size: 260px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
+
+  // The message text is drawn over the themed placeholder art. Colour it from
+  // the theme-aware label token so it stays legible (WCAG AA) in BOTH light and
+  // dark — the token flips with the host data-theme via the same mechanism as
+  // the diagram labels, so the message honours the resolved theme value.
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: var(--allomoney-label-color);
+  font-family: var(--allomoney-label-font);
+  font-size: var(--allomoney-message-size);
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
 
   // The two placeholder SVGs are referenced by URL here. ng-packagr inlines
   // them as data-URIs at build time, so consumers need ZERO angular.json
@@ -85,12 +128,61 @@
 }
 
 // --- Diagram -------------------------------------------------------------
-.allomoney-sankey__canvas {
-  display: block;
+// Scroll viewport for the canvas. By default both axes may scroll so the diagram
+// can stay at its natural (1:1) size and remain legible; turning an axis off
+// (host modifiers below) contains that axis instead — the canvas is scaled down
+// to fit and the scrollbar is hidden.
+.allomoney-sankey__scroll {
   inline-size: 100%;
   block-size: 100%;
   min-block-size: 200px;
+  overflow: auto;
+}
+
+.allomoney-sankey__canvas {
+  display: block;
+  // Natural (1:1) size published by the component as --allomoney-natural-w/h.
+  // Width is pinned to the natural width and height follows from the viewBox
+  // aspect ratio, so the diagram renders at native size (and scrolls) without
+  // ever distorting or upscaling. The fit rules below cap it down when an axis
+  // has scrolling disabled.
+  inline-size: var(--allomoney-natural-w, 100%);
+  block-size: auto;
+  margin-inline: auto; // center when the diagram is narrower than the viewport
   font-family: var(--allomoney-label-font);
+}
+
+// Horizontal scrolling off: scale the diagram down to fit the container width
+// (never up) and hide the horizontal scrollbar.
+:host(.allomoney-sankey--no-hscroll) .allomoney-sankey__scroll {
+  overflow-x: hidden;
+}
+:host(.allomoney-sankey--no-hscroll) .allomoney-sankey__canvas {
+  max-inline-size: 100%;
+}
+
+// Vertical scrolling off: cap the height to the viewport, keeping aspect ratio,
+// and hide the vertical scrollbar. This only bites when the height is bounded
+// (an explicit height, or a height-constrained parent); otherwise the diagram
+// keeps its natural height.
+:host(.allomoney-sankey--no-vscroll) .allomoney-sankey__scroll {
+  overflow-y: hidden;
+}
+:host(.allomoney-sankey--no-vscroll) .allomoney-sankey__canvas {
+  aspect-ratio: var(--allomoney-natural-w) / var(--allomoney-natural-h);
+  inline-size: auto;
+  block-size: auto;
+  max-block-size: 100%;
+}
+
+// Both axes off: contain the whole diagram within the viewport box. The SVG's
+// own preserveAspectRatio keeps it undistorted (letterboxed) inside the box.
+:host(.allomoney-sankey--no-hscroll.allomoney-sankey--no-vscroll) .allomoney-sankey__canvas {
+  aspect-ratio: auto;
+  inline-size: 100%;
+  block-size: 100%;
+  max-inline-size: 100%;
+  max-block-size: 100%;
 }
 
 .allomoney-sankey__link {
@@ -180,12 +272,15 @@
 .allomoney-sankey__node-label {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
 }
 
 .allomoney-sankey__link-value {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
-  font-weight: 700;
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
 }
 
 // Visually-hidden text alternative — present for assistive tech, invisible on

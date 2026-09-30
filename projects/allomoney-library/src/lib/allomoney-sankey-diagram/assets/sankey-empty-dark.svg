@@ -6,18 +6,6 @@
 
   <title id="sankey-empty-dark-title">No data</title>
 
-  <!-- Panel surface — delete this rect to drop the placeholder onto an
-       existing card background. -->
-  <rect id="surface" x="0.5" y="0.5" width="479" height="259" rx="12"
-        fill="#101828" stroke="#344054" stroke-width="1"/>
-
-  <!-- Caption -->
-  <text x="240" y="40"
-        text-anchor="middle"
-        font-family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
-        font-size="14" font-weight="500" letter-spacing="0.6"
-        fill="#98a2b3">No data</text>
-
   <!-- Link: closed ribbon, source edge → target edge → back.
        Dashed outline signals a scaffold rather than a flow of zero. -->
   <path d="M46,94 C240,94 240,148 434,148 L434,206 C240,206 240,152 46,152 Z"

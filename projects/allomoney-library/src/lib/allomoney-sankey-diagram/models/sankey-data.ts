@@ -117,6 +117,30 @@ export interface SankeyOptions {
    * Defaults to `false` (read-only).
    */
   readonly canEditLinkTarget?: boolean;
+  /**
+   * Message shown in the empty state when there are no flows to display.
+   * Rendered as auto-escaped text (never as HTML), so any markup in the string
+   * is shown literally and cannot execute. Defaults to `"No Data"`.
+   */
+  readonly noDataMessage?: string;
+  /**
+   * Controls the horizontal axis when the diagram is wider than its container.
+   * Defaults to `true`.
+   *
+   * - `true`: the diagram keeps its natural (1:1) width so every node, label and
+   *   link value stays at a legible, user-friendly size, and the diagram scrolls
+   *   horizontally when it does not fit.
+   * - `false`: the diagram is scaled down to fit the container width (no
+   *   horizontal scrollbar), which may make elements smaller.
+   */
+  readonly horizontalScrolling?: boolean;
+  /**
+   * Controls the vertical axis when the diagram is taller than its container.
+   * Defaults to `true`. Behaves like {@link horizontalScrolling} on the vertical
+   * axis: `true` keeps the natural height (scrolling when needed) so elements
+   * stay legible; `false` scales the diagram down to fit the available height.
+   */
+  readonly verticalScrolling?: boolean;
 }
 
 /**

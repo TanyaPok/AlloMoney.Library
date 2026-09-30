@@ -64,7 +64,20 @@ export interface LayoutOptions {
   readonly marginBottom: number;
   readonly marginLeft: number;
   readonly labelGap: number;
-  /** Minimum drawn thickness so tiny flows/nodes stay visible. */
+  /**
+   * Minimum gap between two adjacent rank columns along the flow axis. Unlike
+   * `nodePadding` (which separates nodes stacked within one column) this must be
+   * wide enough to show the link value label that sits between two columns and,
+   * in vertical orientation, to keep that label clear of the next node's name —
+   * so it is sized to a couple of text lines, not the tighter node padding.
+   */
+  readonly minColumnGap: number;
+  /**
+   * Minimum drawn thickness (user units) of a node's value-proportional side and
+   * of a link ribbon. It is a legibility floor: a small flow next to a large one
+   * would otherwise render as a barely-visible sliver, so every node and link is
+   * drawn at least this thick even when its value is tiny.
+   */
   readonly minThickness: number;
   /**
    * Minimum vertical distance (center-to-center, user units) between two link
@@ -84,7 +97,11 @@ export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   marginBottom: 32,
   marginLeft: 108,
   labelGap: 10,
-  minThickness: 1.5,
+  minColumnGap: 52,
+  // Legibility floor so small nodes/links never shrink to slivers next to large
+  // ones — roughly the node's flow-axis width, so a minimal element reads as a
+  // clear block rather than a thin line.
+  minThickness: 24,
   minLabelGap: 18,
 };
 
@@ -170,7 +187,6 @@ function separateLabelBands(
 /** Mutable bookkeeping used only inside this module during layout. */
 interface WorkNode {
   readonly node: ValidNode;
-  readonly index: number; // input order — drives the palette
   rank: number;
   magnitude: number;
   x: number;
@@ -234,18 +250,30 @@ export function computeSankeyLayout(
 ): SankeyLayout {
   const vertical = orientation === 'vertical';
   const format = makeValueFormatter(currency);
-  const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minThickness, minLabelGap } = options;
+  const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minColumnGap, minThickness, minLabelGap } = options;
 
-  const palette = generatePalette(nodes.length, theme);
-  const work: WorkNode[] = nodes.map((node, index) => ({
+  // A colour set directly on a node is reserved: the auto palette must never
+  // reproduce it for another node. Two nodes only share a colour when both set
+  // it explicitly. So we drop any generated colour that collides with an
+  // explicit one and hand the survivors out to the auto-coloured nodes in
+  // order. Generate a few extra (one per explicit colour) so skipping never
+  // leaves an auto node short.
+  const explicitColors = new Set<string>();
+  for (const node of nodes) {
+    if (node.color != null) explicitColors.add(node.color);
+  }
+  const autoPalette = generatePalette(nodes.length + explicitColors.size, theme)
+    .filter((color) => !explicitColors.has(color));
+
+  let autoCursor = 0;
+  const work: WorkNode[] = nodes.map((node) => ({
     node,
-    index,
     rank: 0,
     magnitude: 0,
     x: 0,
     y: 0,
     height: 0,
-    color: node.color ?? palette[index],
+    color: node.color ?? autoPalette[autoCursor++],
   }));
   const byId = new Map<number, WorkNode>(work.map((w) => [w.node.id, w]));
 
@@ -288,20 +316,44 @@ export function computeSankeyLayout(
   if (!Number.isFinite(scale)) scale = 1;
 
   // --- 4. Horizontal position (one column per rank) ----------------------
+  // Ranks are spread along the flow axis. Two adjacent columns must be at least
+  // a node width plus a gap apart or their rects would overlap, so when the
+  // requested width is too narrow for every rank the canvas grows along the
+  // flow axis to that necessary minimum (nodes must never overlap). A graph
+  // that already fits keeps spreading across the full requested width.
   const innerWidth = width - marginLeft - marginRight;
+  const requiredInnerWidth =
+    maxRank === 0 ? innerWidth : maxRank * (nodeWidth + minColumnGap) + nodeWidth;
+  const effectiveInnerWidth = Math.max(innerWidth, requiredInnerWidth);
+  const effectiveWidth = marginLeft + effectiveInnerWidth + marginRight;
   const columnX = (rank: number): number =>
-    maxRank === 0 ? marginLeft + (innerWidth - nodeWidth) / 2 : marginLeft + (rank / maxRank) * (innerWidth - nodeWidth);
+    maxRank === 0
+      ? marginLeft + (effectiveInnerWidth - nodeWidth) / 2
+      : marginLeft + (rank / maxRank) * (effectiveInnerWidth - nodeWidth);
 
   // --- 5. Vertical position (stack + vertically center each column) ------
-  for (const column of columns) {
-    let totalHeight = 0;
+  // Size every node first and record the room each column needs: its stacked
+  // heights plus the inter-node padding. A node is never drawn thinner than
+  // minThickness, so a crowded column can need more than the requested inner
+  // height; when it does, the canvas grows on the cross axis to the tallest
+  // column so the stack never spills past the viewBox and gets clipped.
+  const columnHeights = columns.map((column) => {
+    let stacked = 0;
     for (const w of column) {
       w.height = Math.max(w.magnitude * scale, minThickness);
-      totalHeight += w.height;
+      stacked += w.height;
     }
-    totalHeight += Math.max(0, column.length - 1) * nodePadding;
-    let cursor = marginTop + Math.max(0, (innerHeight - totalHeight) / 2);
-    for (const w of column) {
+    return stacked + Math.max(0, column.length - 1) * nodePadding;
+  });
+  const requiredInnerHeight = columnHeights.reduce((max, h) => Math.max(max, h), 0);
+  const effectiveInnerHeight = Math.max(innerHeight, requiredInnerHeight);
+  const effectiveHeight = marginTop + effectiveInnerHeight + marginBottom;
+
+  for (let i = 0; i < columns.length; i++) {
+    // Center each column in the (possibly grown) inner height; the tallest
+    // starts flush at marginTop, shorter ones center in the leftover space.
+    let cursor = marginTop + (effectiveInnerHeight - columnHeights[i]) / 2;
+    for (const w of columns[i]) {
       w.x = columnX(w.rank);
       w.y = cursor;
       cursor += w.height + nodePadding;
@@ -398,7 +450,7 @@ export function computeSankeyLayout(
 
   // Business rule 2: two or more link value labels cannot overlap. Nudge apart
   // any that share a horizontal band; horizontal midpoints are preserved.
-  separateLabelBands(geoms, minLabelGap, marginTop, height - marginBottom);
+  separateLabelBands(geoms, minLabelGap, marginTop, effectiveHeight - marginBottom);
 
   const layoutLinks: LayoutLink[] = geoms.map((geom) => ({
     id: `${geom.link.source}-${geom.link.target}`,
@@ -445,9 +497,11 @@ export function computeSankeyLayout(
   });
 
   // Vertical swaps the canvas to portrait (the horizontal viewBox transposed).
+  // effectiveWidth/effectiveHeight carry any growth needed to fit the ranks and
+  // the tallest column; for the vertical layout the two axes swap.
   return {
-    width: vertical ? height : width,
-    height: vertical ? width : height,
+    width: vertical ? effectiveHeight : effectiveWidth,
+    height: vertical ? effectiveWidth : effectiveHeight,
     nodes: layoutNodes,
     links: layoutLinks,
   };

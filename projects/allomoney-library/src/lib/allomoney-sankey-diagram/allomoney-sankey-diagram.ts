@@ -166,6 +166,15 @@ let uidCounter = 0;
     // inline style so the SCSS default (100% of the container) applies.
     '[style.width.px]': 'dimensions().width',
     '[style.height.px]': 'dimensions().height',
+    // The diagram's natural (1:1) size, published to the SCSS so the canvas can
+    // render at native size (and scroll) or be scaled down to fit — see the
+    // scrolling modes below. `null` in the empty state.
+    '[style.--allomoney-natural-w]': 'naturalSize()?.w ?? null',
+    '[style.--allomoney-natural-h]': 'naturalSize()?.h ?? null',
+    // Scrolling modes: by default the diagram keeps its natural size and scrolls.
+    // Turning an axis off makes it scale down to fit instead (no scrollbar).
+    '[class.allomoney-sankey--no-hscroll]': '!horizontalScrolling()',
+    '[class.allomoney-sankey--no-vscroll]': '!verticalScrolling()',
   },
 })
 export class AllomoneySankeyDiagram {
@@ -208,6 +217,10 @@ export class AllomoneySankeyDiagram {
   readonly orientationInput = input<SankeyOrientation | undefined>(undefined, {
     alias: 'orientation',
   });
+  /** Raw `[noDataMessage]` element input (see resolved {@link noDataMessage}). */
+  readonly noDataMessageInput = input<string | undefined>(undefined, {
+    alias: 'noDataMessage',
+  });
   /** Raw `[width]` element input in px (see resolved {@link dimensions}). */
   readonly widthInput = input<number | null | undefined>(undefined, {
     alias: 'width',
@@ -247,6 +260,16 @@ export class AllomoneySankeyDiagram {
   );
 
   /**
+   * The resolved empty-state message: {@link options}`.noDataMessage` when set,
+   * else the `[noDataMessage]` input, else `'No Data'`. Rendered through
+   * interpolation (auto-escaped), so any markup is shown literally and cannot
+   * execute — no HTML/script can be injected through it.
+   */
+  protected readonly noDataMessage = computed<string>(
+    () => this.options().noDataMessage ?? this.noDataMessageInput() ?? 'No Data',
+  );
+
+  /**
    * The resolved host size in CSS pixels (or `null` per axis for the default
    * 100%-of-container size). {@link options}`.width`/`.height` win over the
    * `[width]`/`[height]` inputs; an invalid or display-distorting request is
@@ -258,6 +281,36 @@ export class AllomoneySankeyDiagram {
       this.options().width ?? this.widthInput(),
       this.options().height ?? this.heightInput(),
     ),
+  );
+
+  /**
+   * The diagram's natural (1:1) size as CSS length strings, published to the
+   * SCSS as `--allomoney-natural-w/h`. The canvas renders at this size (and
+   * scrolls) when scrolling is on, or is scaled down to fit when it is off.
+   * `null` in the empty state, where there is no diagram to size.
+   */
+  protected readonly naturalSize = computed<{ readonly w: string; readonly h: string } | null>(() => {
+    const view = this.layout();
+    return view ? { w: `${view.width}px`, h: `${view.height}px` } : null;
+  });
+
+  /**
+   * Whether the diagram keeps its natural width and scrolls horizontally when it
+   * overflows (`true`, the default) or is scaled down to fit the container width
+   * (`false`). {@link SankeyOptions.horizontalScrolling} when set, else `true`.
+   */
+  protected readonly horizontalScrolling = computed(
+    () => this.options().horizontalScrolling ?? true,
+  );
+
+  /**
+   * Whether the diagram keeps its natural height and scrolls vertically when it
+   * overflows (`true`, the default) or is scaled down to fit the available
+   * height (`false`). {@link SankeyOptions.verticalScrolling} when set, else
+   * `true`.
+   */
+  protected readonly verticalScrolling = computed(
+    () => this.options().verticalScrolling ?? true,
   );
 
   // Edit flags can be set two ways: as a dedicated element input
