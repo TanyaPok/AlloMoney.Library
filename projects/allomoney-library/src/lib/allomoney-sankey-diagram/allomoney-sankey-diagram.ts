@@ -1,4 +1,5 @@
 import {
+  afterNextRender,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
@@ -6,6 +7,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   model,
   numberAttribute,
@@ -192,6 +194,7 @@ let uidCounter = 0;
 export class AllomoneySankeyDiagram {
   private readonly config = inject(ALLOMONEY_LIBRARY_CONFIG);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   private readonly uid = ++uidCounter;
 
   /** Element id for the SVG `<desc>` (accessible summary). */
@@ -259,9 +262,13 @@ export class AllomoneySankeyDiagram {
    * {@link options}`.currency` when set, else the `[currency]` input, else
    * `null`.
    */
-  protected readonly currency = computed<string | null>(
-    () => this.options().currency ?? this.currencyInput() ?? null,
-  );
+  protected readonly currency = computed<string | null>(() => {
+    // `null` is a meaningful option value here ("plain numbers"), so an explicit
+    // `options.currency` — including `null` — wins; only an absent (`undefined`)
+    // key falls through to the `[currency]` input, then to the `null` default.
+    const opt = this.options().currency;
+    return opt !== undefined ? opt : (this.currencyInput() ?? null);
+  });
 
   /**
    * The resolved flow direction: {@link options}`.orientation` when set, else
@@ -288,22 +295,28 @@ export class AllomoneySankeyDiagram {
    * discarded (its error logged) and the default size is used. See
    * {@link resolveDimensions}.
    */
-  protected readonly dimensions = computed(() =>
-    resolveDimensions(
-      this.options().width ?? this.widthInput(),
-      this.options().height ?? this.heightInput(),
-    ),
-  );
+  protected readonly dimensions = computed(() => {
+    // `null` is a meaningful option value here ("default 100% size"), so an
+    // explicit `options.width`/`.height` — including `null` — wins; only an absent
+    // (`undefined`) key falls through to the `[width]`/`[height]` input.
+    const opts = this.options();
+    return resolveDimensions(
+      opts.width !== undefined ? opts.width : this.widthInput(),
+      opts.height !== undefined ? opts.height : this.heightInput(),
+    );
+  });
 
   /**
-   * The diagram's natural (1:1) size as CSS length strings, published to the
-   * SCSS as `--allomoney-natural-w/h`. The canvas renders at this size (and
-   * scrolls) when scrolling is on, or is scaled down to fit when it is off.
-   * `null` in the empty state, where there is no diagram to size.
+   * The diagram's natural (1:1) size as unitless user-unit numbers, published to
+   * the SCSS as `--allomoney-natural-w/h`. The canvas renders at this size (and
+   * scrolls) when scrolling is on, or is scaled down to fit when it is off. Kept
+   * unitless so the value is valid both as an `aspect-ratio` operand and, via
+   * `calc(... * 1px)`, as a pixel length. `null` in the empty state, where there
+   * is no diagram to size.
    */
-  protected readonly naturalSize = computed<{ readonly w: string; readonly h: string } | null>(() => {
+  protected readonly naturalSize = computed<{ readonly w: number; readonly h: number } | null>(() => {
     const view = this.layout();
-    return view ? { w: `${view.width}px`, h: `${view.height}px` } : null;
+    return view ? { w: view.width, h: view.height } : null;
   });
 
   /**
@@ -953,19 +966,26 @@ export class AllomoneySankeyDiagram {
     });
 
     // Move keyboard focus into the overlay when an edit opens, so keyboard users
-    // land in the first editable control (UC-3/UC-4 accessibility).
+    // land in the first editable control (UC-3/UC-4 accessibility). The overlay —
+    // and its view-child controls — are created by an `@if` and only exist after
+    // the next render, so the focus is deferred to the post-render phase via
+    // `afterNextRender`; a microtask could run before the `@if` materializes the
+    // inputs, leaving every ref `undefined` and the focus never landing.
     effect(() => {
       if (this.editKey() === null) return;
-      queueMicrotask(() => {
-        const el =
-          this.nameInputRef()?.nativeElement ??
-          this.valueInputRef()?.nativeElement ??
-          this.sourceSelectRef()?.nativeElement ??
-          this.targetSelectRef()?.nativeElement ??
-          this.linkValueInputRef()?.nativeElement;
-        el?.focus();
-        if (el instanceof HTMLInputElement) el.select();
-      });
+      afterNextRender(
+        () => {
+          const el =
+            this.nameInputRef()?.nativeElement ??
+            this.valueInputRef()?.nativeElement ??
+            this.sourceSelectRef()?.nativeElement ??
+            this.targetSelectRef()?.nativeElement ??
+            this.linkValueInputRef()?.nativeElement;
+          el?.focus();
+          if (el instanceof HTMLInputElement) el.select();
+        },
+        { injector: this.injector },
+      );
     });
   }
 }

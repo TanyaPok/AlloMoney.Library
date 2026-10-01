@@ -141,12 +141,14 @@
 
 .allomoney-sankey__canvas {
   display: block;
-  // Natural (1:1) size published by the component as --allomoney-natural-w/h.
-  // Width is pinned to the natural width and height follows from the viewBox
+  // Natural (1:1) size published by the component as --allomoney-natural-w/h
+  // (unitless user units; see naturalSize). Width is pinned to the natural width
+  // — multiplied into a px length here — and height follows from the viewBox
   // aspect ratio, so the diagram renders at native size (and scrolls) without
   // ever distorting or upscaling. The fit rules below cap it down when an axis
-  // has scrolling disabled.
-  inline-size: var(--allomoney-natural-w, 100%);
+  // has scrolling disabled. Falls back to 100% in the (canvas-less) empty state.
+  --allomoney-natural-w-px: calc(var(--allomoney-natural-w) * 1px);
+  inline-size: var(--allomoney-natural-w-px, 100%);
   block-size: auto;
   margin-inline: auto; // center when the diagram is narrower than the viewport
   font-family: var(--allomoney-label-font);

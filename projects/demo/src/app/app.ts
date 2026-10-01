@@ -44,14 +44,13 @@ export class App {
             {id: 1},
             {id: 2},
             {id: 3},
-            {id: 4},
+            {id: 4, name: "qwer"},
             {id: 5},
-            {id: 6},
-            {id: 7}
+            {id: 6}
         ],
         links: [
             // {source: 0, target: 1, value: 1},
-            {source: 0, target: 2, value: 1},
+            {source: 0, target: 1, value: 1},
             // {source: 0, target: 3, value: 1},
             // {source: 0, target: 4, value: 1},
 
@@ -79,8 +78,8 @@ export class App {
         //height: 1500
         //horizontalScrolling: true,
         //verticalScrolling: true,
-        //canEditNodeName: true,
-        //canEditNodeValue: true,
+        canEditNodeName: true,
+        canEditNodeValue: true,
         currency: 'USD',
         //canEditLinkValue: true,
         canEditLinkSource: true,
