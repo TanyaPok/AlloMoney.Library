@@ -124,6 +124,13 @@ export interface SankeyOptions {
    */
   readonly noDataMessage?: string;
   /**
+   * When `true` (the default), several links between the same two nodes are
+   * merged into a single ribbon whose value is their sum; the derived value of
+   * such an aggregate cannot be edited in place. When `false`, every link is
+   * drawn as its own ribbon.
+   */
+  readonly canAggregateLinks?: boolean;
+  /**
    * Controls the horizontal axis when the diagram is wider than its container.
    * Defaults to `true`.
    *

@@ -24,6 +24,12 @@ export interface ValidLink {
     readonly target: number;
     readonly value: number;
     readonly color?: string;
+    /**
+     * Position of this link in the original {@link SankeyData.links} array. It is
+     * the stable identity used to write an edit back to the exact link — needed
+     * because parallel links share the same source and target.
+     */
+    readonly index: number;
 }
 
 /** Result of validating a {@link SankeyData} payload. */
@@ -110,7 +116,8 @@ export function validateSankeyData(
     const validLinks: ValidLink[] = [];
     const links = Array.isArray(data.links) ? data.links : [];
 
-    for (const link of links) {
+    for (let i = 0; i < links.length; i++) {
+        const link = links[i];
         if (link == null) {
             errors.push('Skipped a link: entry is null or undefined.');
             continue;
@@ -140,6 +147,7 @@ export function validateSankeyData(
             source: link.source,
             target: link.target,
             value: link.value,
+            index: i,
             ...(link.color != null ? {color: link.color} : {}),
         });
     }

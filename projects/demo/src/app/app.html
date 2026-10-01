@@ -10,5 +10,7 @@
         two-way <code>[(dataSource)]</code> binding and update both cards.
     </p>
 
-    <allomoney-sankey-diagram [options]="options" [dataSource]="data()" (dataSourceChange)="data.set($event)"/>
+    <div class="diagram-div">
+        <allomoney-sankey-diagram [options]="options" [dataSource]="data()" (dataSourceChange)="data.set($event)"/>
+    </div>
 </main>

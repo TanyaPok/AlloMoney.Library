@@ -23,6 +23,16 @@ export interface LayoutNode {
   readonly labelX: number;
   readonly labelY: number;
   readonly labelAnchor: 'start' | 'middle' | 'end';
+  /**
+   * `true` for a synthetic "ghost" node: a phantom duplicate of a real node,
+   * created to break a cycle by redrawing a returning flow forward instead of
+   * looping backward. A ghost is drawn as a border-only outline (no fill) in its
+   * original's color, is never editable/selectable, and never appears in
+   * {@link SankeyData} — it exists only in this layout.
+   */
+  readonly ghost: boolean;
+  /** For a ghost, the id of the real node it duplicates; `null` otherwise. */
+  readonly ghostOf: number | null;
 }
 
 /** A link ribbon positioned by the layout engine. */
@@ -31,6 +41,12 @@ export interface LayoutLink {
   readonly id: string;
   readonly source: number;
   readonly target: number;
+  /**
+   * Position of the originating link in {@link SankeyData.links}. Used to write an
+   * edit back to the exact link — the reliable identity when parallel links share
+   * a source and target. For an aggregate it is the first contributor's index.
+   */
+  readonly sourceIndex: number;
   /** Raw flow magnitude. */
   readonly value: number;
   /** SVG `path` `d` for the closed ribbon. */
@@ -43,6 +59,12 @@ export interface LayoutLink {
   readonly labelY: number;
   /** Accessible description, e.g. `"account 0 → node 2: 5.50"`. */
   readonly a11yLabel: string;
+  /**
+   * `true` when this ribbon aggregates two or more parallel links (same source
+   * and target) whose values were summed. Such a flow's value is derived, so it
+   * cannot be edited in place — the component blocks the attempt and logs why.
+   */
+  readonly aggregated: boolean;
 }
 
 /** Complete, render-ready layout in a fixed user-space viewBox. */
@@ -193,6 +215,85 @@ interface WorkNode {
   y: number;
   height: number;
   color: string;
+  /** `true` for a synthetic ghost node (see {@link LayoutNode.ghost}). */
+  ghost: boolean;
+  /** For a ghost, the real node id it duplicates; `null` for real nodes. */
+  ghostOf: number | null;
+}
+
+/**
+ * Merges parallel links — those sharing the same source AND target — into a
+ * single aggregate whose value is their summed magnitude, so a flow between two
+ * nodes always reads as one ribbon (and gets one unique `"source-target"` track
+ * id instead of colliding duplicates). First-seen order is preserved for a
+ * deterministic result, and the aggregate keeps the first contributor's colour.
+ * Opposite-direction links (a genuine cycle, e.g. `A→B` and `B→A`) are distinct
+ * pairs and are left untouched.
+ */
+function aggregateParallelLinks(
+  links: readonly ValidLink[],
+): { readonly links: ValidLink[]; readonly counts: ReadonlyMap<string, number> } {
+  const byPair = new Map<string, ValidLink>();
+  const counts = new Map<string, number>();
+  const order: string[] = [];
+  for (const link of links) {
+    const key = `${link.source}->${link.target}`;
+    const existing = byPair.get(key);
+    if (existing) {
+      byPair.set(key, { ...existing, value: existing.value + link.value });
+      counts.set(key, (counts.get(key) ?? 1) + 1);
+    } else {
+      byPair.set(key, link);
+      counts.set(key, 1);
+      order.push(key);
+    }
+  }
+  return { links: order.map((key) => byPair.get(key)!), counts };
+}
+
+/**
+ * Finds the "back edges" — the links that close a cycle. A directed graph is
+ * acyclic exactly when a depth-first search crosses no edge into a node that is
+ * still on the current DFS stack; each such edge is a back edge. Removing them
+ * leaves a DAG that {@link assignRanks} can lay out, and each is then redrawn
+ * forward into a ghost duplicate of its target instead of looping backward.
+ *
+ * Iterative (an explicit stack) so a deep chain cannot overflow the call stack.
+ * Deterministic: roots and each node's out-links are visited in input order.
+ */
+function detectBackEdges(
+  work: readonly WorkNode[],
+  outgoing: ReadonlyMap<number, readonly ValidLink[]>,
+): ReadonlySet<ValidLink> {
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const state = new Map<number, number>();
+  const back = new Set<ValidLink>();
+
+  for (const root of work) {
+    if ((state.get(root.node.id) ?? WHITE) !== WHITE) continue;
+    const stack: { readonly id: number; i: number }[] = [{ id: root.node.id, i: 0 }];
+    state.set(root.node.id, GRAY);
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const out = outgoing.get(frame.id) ?? [];
+      if (frame.i < out.length) {
+        const link = out[frame.i++];
+        const next = state.get(link.target) ?? WHITE;
+        if (next === GRAY) {
+          back.add(link); // edge into an ancestor on the stack → closes a cycle
+        } else if (next === WHITE) {
+          state.set(link.target, GRAY);
+          stack.push({ id: link.target, i: 0 });
+        }
+      } else {
+        state.set(frame.id, BLACK);
+        stack.pop();
+      }
+    }
+  }
+  return back;
 }
 
 /**
@@ -230,7 +331,8 @@ function assignRanks(work: readonly WorkNode[], links: readonly ValidLink[], byI
  * neighbor they connect to.
  *
  * @param nodes Validated nodes, in input order.
- * @param links Validated links referencing only valid nodes.
+ * @param rawLinks Validated links referencing only valid nodes. Parallel links
+ *   (same source and target) are aggregated into one summed ribbon before layout.
  * @param theme Active theme (drives the generated palette).
  * @param orientation `'horizontal'` (default) lays flows left→right with node
  *   names to the left of each node; `'vertical'` lays them top→bottom with names
@@ -238,19 +340,40 @@ function assignRanks(work: readonly WorkNode[], links: readonly ValidLink[], byI
  *   transposed (every coordinate mirrored across x = y).
  * @param currency Optional ISO 4217 code; when set, values are formatted as
  *   currency in the host locale, otherwise as a plain fixed-2 number.
+ * @param aggregate When `true` (default), parallel links (same source and
+ *   target) are merged into one summed ribbon; when `false`, every link is drawn
+ *   as its own ribbon.
  * @param options Geometry overrides (defaults to {@link DEFAULT_LAYOUT_OPTIONS}).
  */
 export function computeSankeyLayout(
   nodes: readonly ValidNode[],
-  links: readonly ValidLink[],
+  rawLinks: readonly ValidLink[],
   theme: SankeyTheme,
   orientation: SankeyOrientation = 'horizontal',
   currency: string | null = null,
+  aggregate = true,
   options: LayoutOptions = DEFAULT_LAYOUT_OPTIONS,
 ): SankeyLayout {
   const vertical = orientation === 'vertical';
   const format = makeValueFormatter(currency);
   const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minColumnGap, minThickness, minLabelGap } = options;
+
+  // Several links between the same two nodes are shown as one aggregate ribbon
+  // (their summed value) unless aggregation is turned off, in which case every
+  // link is kept as-is. Everything below — cycle detection, magnitude, stacking
+  // and geometry — then works on `links`. `linkCounts` records how many raw links
+  // each pair merged, so the emitted link can flag an aggregate (whose derived
+  // value must not be edited in place); it is empty when not aggregating.
+  let links: readonly ValidLink[];
+  let linkCounts: ReadonlyMap<string, number>;
+  if (aggregate) {
+    const merged = aggregateParallelLinks(rawLinks);
+    links = merged.links;
+    linkCounts = merged.counts;
+  } else {
+    links = rawLinks;
+    linkCounts = new Map();
+  }
 
   // A colour set directly on a node is reserved: the auto palette must never
   // reproduce it for another node. Two nodes only share a colour when both set
@@ -274,19 +397,121 @@ export function computeSankeyLayout(
     y: 0,
     height: 0,
     color: node.color ?? autoPalette[autoCursor++],
+    ghost: false,
+    ghostOf: null,
   }));
   const byId = new Map<number, WorkNode>(work.map((w) => [w.node.id, w]));
 
-  // --- 1. Rank assignment (columns) --------------------------------------
-  const maxRank = assignRanks(work, links, byId);
+  // --- 1. Cycle handling + rank assignment (columns) ---------------------
+  // Money-flow graphs are expected to be acyclic, but a returning flow (say a
+  // broker paying back into the checking account) forms a cycle that longest-
+  // path ranking cannot place. Each link that closes a cycle is detected as a
+  // back edge, left out of ranking so the rest lays out as a clean left→right
+  // DAG, and later redrawn forward into a "ghost" duplicate of its target.
+  const outgoingAll = new Map<number, ValidLink[]>();
+  for (const link of links) {
+    let list = outgoingAll.get(link.source);
+    if (!list) outgoingAll.set(link.source, (list = []));
+    list.push(link);
+  }
+  const backEdges = detectBackEdges(work, outgoingAll);
+  const forwardLinks =
+    backEdges.size > 0 ? links.filter((link) => !backEdges.has(link)) : links;
+
+  let maxRank = assignRanks(work, forwardLinks, byId);
+
+  // Each back edge is redrawn forward into a phantom copy of its target placed
+  // one column past its source, so the returning flow reads left→right into a
+  // duplicate instead of doubling back. Ghosts borrow their original's label and
+  // colour but are drawn border-only, are never editable, and are absent from
+  // the consumer's data. Their ids are allocated above every real id so they can
+  // never collide with one.
+  //
+  // A single ghost is shared by every back edge that returns to the same
+  // original AND lands on the same level (rank) — several brokers paying back
+  // into one account collapse to one phantom account, its return ribbons
+  // stacked into it. Back edges to that original that fall on different levels
+  // (their sources sit in different columns) keep their own ghost, since they
+  // cannot share one column.
+  let nextGhostId = 0;
+  for (const w of work) nextGhostId = Math.max(nextGhostId, w.node.id);
+  nextGhostId = Math.floor(nextGhostId) + 1;
+  const usedIds = new Set<number>(byId.keys());
+  const allocGhostId = (): number => {
+    while (usedIds.has(nextGhostId)) nextGhostId++;
+    const id = nextGhostId++;
+    usedIds.add(id);
+    return id;
+  };
+
+  // Back edge → the ghost that stands in for its (real) target. The emitted link
+  // keeps its real source/target for tooltips, a11y and editing; only its drawn
+  // geometry is routed into the ghost. Ghosts are keyed by (original id, rank) so
+  // co-levelled returns to the same original reuse one phantom node.
+  const ghostByBackEdge = new Map<ValidLink, WorkNode>();
+  const ghostByOriginalRank = new Map<string, WorkNode>();
+  for (const link of backEdges) {
+    const original = byId.get(link.target);
+    const source = byId.get(link.source);
+    if (!original || !source) continue;
+    const rank = source.rank + 1;
+    const groupKey = `${original.node.id}@${rank}`;
+    let ghost = ghostByOriginalRank.get(groupKey);
+    if (!ghost) {
+      ghost = {
+        node: {
+          id: allocGhostId(),
+          label: original.node.label,
+          value: null,
+          ...(original.node.color != null ? { color: original.node.color } : {}),
+        },
+        rank,
+        magnitude: 0,
+        x: 0,
+        y: 0,
+        height: 0,
+        color: original.color,
+        ghost: true,
+        ghostOf: original.node.id,
+      };
+      work.push(ghost);
+      byId.set(ghost.node.id, ghost);
+      ghostByOriginalRank.set(groupKey, ghost);
+      if (ghost.rank > maxRank) maxRank = ghost.rank;
+    }
+    ghostByBackEdge.set(link, ghost);
+  }
+
+  // Geometry uses these links: a back edge flows into its ghost instead of
+  // looping back, every other link is unchanged. `originalOf` maps each geometry
+  // link back to the consumer-facing link it was derived from.
+  const originalOf = new Map<ValidLink, ValidLink>();
+  const geomLinks: ValidLink[] = links.map((link) => {
+    const ghost = ghostByBackEdge.get(link);
+    if (!ghost) {
+      originalOf.set(link, link);
+      return link;
+    }
+    const routed: ValidLink = {
+      source: link.source,
+      target: ghost.node.id,
+      value: link.value,
+      index: link.index,
+      ...(link.color != null ? { color: link.color } : {}),
+    };
+    originalOf.set(routed, link);
+    return routed;
+  });
 
   // --- 2. Node magnitude --------------------------------------------------
   // Explicit value ("total deposit") wins; otherwise the summed inflow. The
   // drawn height is at least large enough to fit whichever side (in/out) of
   // links carries the most value, so ribbons never overflow the node.
+  // Uses the routed geometry links so a returning flow sizes its ghost sink
+  // rather than folding back into (and inflating) its real target node.
   const inflow = new Map<number, number>();
   const outflow = new Map<number, number>();
-  for (const link of links) {
+  for (const link of geomLinks) {
     inflow.set(link.target, (inflow.get(link.target) ?? 0) + link.value);
     outflow.set(link.source, (outflow.get(link.source) ?? 0) + link.value);
   }
@@ -366,7 +591,7 @@ export function computeSankeyLayout(
 
   const outgoingByNode = new Map<number, ValidLink[]>();
   const incomingByNode = new Map<number, ValidLink[]>();
-  for (const link of links) {
+  for (const link of geomLinks) {
     let outList = outgoingByNode.get(link.source);
     if (!outList) outgoingByNode.set(link.source, (outList = []));
     outList.push(link);
@@ -376,30 +601,55 @@ export function computeSankeyLayout(
   }
   // Stack each node's outgoing links by their target's vertical position, and
   // incoming links by their source's — this minimizes ribbon crossings. The
-  // resulting slice offsets are recorded per link so both endpoints agree.
+  // resulting slice spans are recorded per link (top `y0`, bottom `y1`) for each
+  // side so both endpoints agree.
   const sourceY0 = new Map<ValidLink, number>();
+  const sourceY1 = new Map<ValidLink, number>();
   const targetY0 = new Map<ValidLink, number>();
+  const targetY1 = new Map<ValidLink, number>();
+
+  // Stacks one side of a node's links so their ribbon ends attach flush to the
+  // node: each link takes its value-proportional thickness from the node's top
+  // edge downward. Small links floored to `minThickness` (and any zero-value
+  // link) can make the stack taller than the node's fixed drawn height, which
+  // would spill the ribbons past the node's bottom edge — so when the stack
+  // overflows it is scaled to exactly fill the node height. It never expands
+  // past the natural thickness, so a node carrying less than its magnitude on
+  // this side keeps a proportional gap. Source and target sides are fitted
+  // independently, so an oversubscribed end simply tapers to meet its node.
+  const stackSide = (
+    nodeId: number,
+    list: readonly ValidLink[],
+    y0: Map<ValidLink, number>,
+    y1: Map<ValidLink, number>,
+  ): void => {
+    const node = byId.get(nodeId)!;
+    let total = 0;
+    for (const link of list) total += thicknessOf(link);
+    const fit = total > node.height ? node.height / total : 1;
+    let offset = node.y;
+    for (const link of list) {
+      const slice = thicknessOf(link) * fit;
+      y0.set(link, offset);
+      y1.set(link, offset + slice);
+      offset += slice;
+    }
+  };
+
   for (const [nodeId, list] of outgoingByNode) {
     list.sort((a, b) => center(byId.get(a.target)!) - center(byId.get(b.target)!));
-    let offset = byId.get(nodeId)!.y;
-    for (const link of list) {
-      sourceY0.set(link, offset);
-      offset += thicknessOf(link);
-    }
+    stackSide(nodeId, list, sourceY0, sourceY1);
   }
   for (const [nodeId, list] of incomingByNode) {
     list.sort((a, b) => center(byId.get(a.source)!) - center(byId.get(b.source)!));
-    let offset = byId.get(nodeId)!.y;
-    for (const link of list) {
-      targetY0.set(link, offset);
-      offset += thicknessOf(link);
-    }
+    stackSide(nodeId, list, targetY0, targetY1);
   }
 
   // Build geometry first (input order → stable, deterministic result), then
   // resolve label overlaps before emitting the final link objects.
   interface LinkGeom {
-    readonly link: ValidLink;
+    /** The consumer-facing link this ribbon represents (real source/target). */
+    readonly original: ValidLink;
     readonly source: WorkNode;
     readonly path: string;
     readonly thickness: number;
@@ -414,19 +664,24 @@ export function computeSankeyLayout(
   // byte-identical to a plain `${x},${y}`.
   const pt = (px: number, py: number): string => (vertical ? `${py},${px}` : `${px},${py}`);
 
-  const geoms: LinkGeom[] = links.map((link) => {
+  const geoms: LinkGeom[] = geomLinks.map((link) => {
+    const original = originalOf.get(link)!;
     const source = byId.get(link.source)!;
+    // For a back edge `target` is the ghost duplicate, so the ribbon is drawn
+    // forward into it; the emitted link still carries its real source/target.
     const target = byId.get(link.target)!;
     const thickness = thicknessOf(link);
 
+    // Fitted spans on each side — sy1-sy0 (source) and ty1-ty0 (target) may
+    // differ when a node is oversubscribed, so the ribbon tapers to stay flush.
     const sy0 = sourceY0.get(link)!;
+    const sy1 = sourceY1.get(link)!;
     const ty0 = targetY0.get(link)!;
+    const ty1 = targetY1.get(link)!;
 
     const x0 = source.x + nodeWidth; // right edge of source node
     const x1 = target.x; // left edge of target node
     const xm = (x0 + x1) / 2;
-    const sy1 = sy0 + thickness;
-    const ty1 = ty0 + thickness;
 
     const path =
       `M${pt(x0, sy0)}` +
@@ -437,7 +692,7 @@ export function computeSankeyLayout(
 
     const valueLabel = format(link.value);
     return {
-      link,
+      original,
       source,
       path,
       thickness,
@@ -452,19 +707,31 @@ export function computeSankeyLayout(
   // any that share a horizontal band; horizontal midpoints are preserved.
   separateLabelBands(geoms, minLabelGap, marginTop, effectiveHeight - marginBottom);
 
-  const layoutLinks: LayoutLink[] = geoms.map((geom) => ({
-    id: `${geom.link.source}-${geom.link.target}`,
-    source: geom.link.source,
-    target: geom.link.target,
-    value: geom.link.value,
-    path: geom.path,
-    color: geom.link.color ?? geom.source.color,
-    thickness: geom.thickness,
-    valueLabel: geom.valueLabel,
-    labelX: vertical ? geom.labelY : geom.labelX,
-    labelY: vertical ? geom.labelX : geom.labelY,
-    a11yLabel: geom.a11yLabel,
-  }));
+  // When aggregation is off, parallel links share the same `source-target`; a
+  // per-pair occurrence suffix keeps every id unique for `@for` tracking and
+  // selection. With aggregation on there are no duplicates, so ids are unchanged.
+  const idSeen = new Map<string, number>();
+  const layoutLinks: LayoutLink[] = geoms.map((geom) => {
+    const pairKey = `${geom.original.source}->${geom.original.target}`;
+    const seen = idSeen.get(pairKey) ?? 0;
+    idSeen.set(pairKey, seen + 1);
+    const baseId = `${geom.original.source}-${geom.original.target}`;
+    return {
+      id: seen === 0 ? baseId : `${baseId}#${seen}`,
+      source: geom.original.source,
+      target: geom.original.target,
+      sourceIndex: geom.original.index,
+      value: geom.original.value,
+      path: geom.path,
+      color: geom.original.color ?? geom.source.color,
+      thickness: geom.thickness,
+      valueLabel: geom.valueLabel,
+      labelX: vertical ? geom.labelY : geom.labelX,
+      labelY: vertical ? geom.labelX : geom.labelY,
+      a11yLabel: geom.a11yLabel,
+      aggregated: (linkCounts.get(pairKey) ?? 1) > 1,
+    };
+  });
 
   // --- 7. Node geometry + labels -----------------------------------------
   // Business rule 2: for horizontal orientation every node's name/id sits on the
@@ -493,6 +760,8 @@ export function computeSankeyLayout(
       labelX: vertical ? canonLabelY : canonLabelX,
       labelY: vertical ? canonLabelX : canonLabelY,
       labelAnchor: vertical ? 'middle' : 'end',
+      ghost: w.ghost,
+      ghostOf: w.ghostOf,
     };
   });
 

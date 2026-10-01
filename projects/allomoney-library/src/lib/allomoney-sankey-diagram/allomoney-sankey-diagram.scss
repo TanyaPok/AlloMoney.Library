@@ -269,6 +269,18 @@
   stroke-width: 1;
 }
 
+// A ghost node (a phantom duplicate created to break a cycle) is drawn as a
+// border-only outline: no fill, its original's color as a dashed stroke so it
+// reads clearly as a non-editable stand-in. `fill`/`stroke` colors are set
+// inline from the node's color; here we size the border and keep the whole
+// (transparent) box hoverable. The stroke is deliberately heavy so a pale,
+// auto-palette color still reads as a defined outline against the surface.
+.allomoney-sankey__node-rect--ghost {
+  stroke-width: 4;
+  stroke-dasharray: 6 4;
+  pointer-events: all;
+}
+
 .allomoney-sankey__node-label {
   fill: var(--allomoney-label-color);
   font-size: var(--allomoney-label-size);
