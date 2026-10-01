@@ -91,12 +91,24 @@ interface NodeEditDraft extends EditDraftBase {
   readonly seedValue: string;
 }
 
-/** A link edit in progress: identified by its original source/target. */
+/** A link edit in progress: identified by its position in the data. */
 interface LinkEditDraft extends EditDraftBase {
   readonly kind: 'link';
-  /** Original source id — identifies the edited link and seeds the source select. */
+  /**
+   * Position of the edited link in {@link SankeyData.links}. This — not the
+   * source/target pair — is the link's identity, so parallel links between the
+   * same two nodes are told apart and the edit lands on the one that was opened.
+   */
+  readonly index: number;
+  /**
+   * `true` when the edited ribbon is an aggregate of several parallel links. Its
+   * value is a derived sum and is not editable; a source/target change is applied
+   * to every combined link.
+   */
+  readonly aggregated: boolean;
+  /** Original source id — seeds the source select. */
   readonly source: number;
-  /** Original target id — identifies the edited link and seeds the target select. */
+  /** Original target id — seeds the target select. */
   readonly target: number;
   /** Initial value shown in the input. */
   readonly seedValue: string;
@@ -345,6 +357,11 @@ export class AllomoneySankeyDiagram {
     alias: 'canEditLinkTarget',
     transform: booleanAttribute,
   });
+  /** Raw `[canAggregateLinks]` element input (see resolved {@link canAggregateLinks}). */
+  readonly canAggregateLinksInput = input(true, {
+    alias: 'canAggregateLinks',
+    transform: booleanAttribute,
+  });
 
   /**
    * When `true`, a user may edit each node's name by double-clicking it.
@@ -401,6 +418,15 @@ export class AllomoneySankeyDiagram {
     () => this.canEditLinkValue() || this.canEditLinkSource() || this.canEditLinkTarget(),
   );
 
+  /**
+   * When `true` (the default), parallel links (same source and target) are merged
+   * into one summed ribbon. {@link options}`.canAggregateLinks` when set, else the
+   * `[canAggregateLinks]` input, else `true`.
+   */
+  protected readonly canAggregateLinks = computed(
+    () => this.options().canAggregateLinks ?? this.canAggregateLinksInput(),
+  );
+
   private readonly validation = computed(() => validateSankeyData(this.dataSource()));
 
   /** `true` when the placeholder must be shown (empty or all-invalid). */
@@ -419,6 +445,7 @@ export class AllomoneySankeyDiagram {
       this.theme(),
       this.orientation(),
       this.currency(),
+      this.canAggregateLinks(),
     );
   });
 
@@ -456,14 +483,35 @@ export class AllomoneySankeyDiagram {
     if (!view) return [];
     const chain = this.activeChain();
     const sel = this.selected();
-    return view.nodes.map((node) => ({
-      ...node,
-      dimmed: chain !== null && !chain.nodeIds.has(node.id),
-      selected: sel?.kind === 'node' && sel.id === node.id,
-      editLabel: node.valueLabel
-        ? `Edit node ${node.label}, value ${node.valueLabel}`
-        : `Edit node ${node.label}`,
-    }));
+    return view.nodes.map((node) => {
+      // A ghost shares its real twin's chain membership, so it lights and dims in
+      // lockstep with the node it duplicates rather than looking orphaned.
+      const chainId = node.ghost && node.ghostOf != null ? node.ghostOf : node.id;
+      return {
+        ...node,
+        dimmed: chain !== null && !chain.nodeIds.has(chainId),
+        selected: sel?.kind === 'node' && sel.id === node.id,
+        editLabel: node.valueLabel
+          ? `Edit node ${node.label}, value ${node.valueLabel}`
+          : `Edit node ${node.label}`,
+      };
+    });
+  });
+
+  /**
+   * Ghost node id → the real node id it duplicates. A ghost is a synthetic,
+   * non-editable phantom created to break a cycle; it exists only in the layout,
+   * so hover and selection alias it to its real twin (or ignore it).
+   */
+  private readonly ghostAliasById = computed<ReadonlyMap<number, number>>(() => {
+    const view = this.layout();
+    const map = new Map<number, number>();
+    if (view) {
+      for (const node of view.nodes) {
+        if (node.ghost && node.ghostOf != null) map.set(node.id, node.ghostOf);
+      }
+    }
+    return map;
   });
 
   /** Links decorated with their current dim state (see {@link renderNodes}). */
@@ -484,7 +532,9 @@ export class AllomoneySankeyDiagram {
   protected readonly summary = computed(() => {
     const layout = this.layout();
     if (!layout) return '';
-    const nodeCount = layout.nodes.length;
+    // Ghost nodes are phantom cycle duplicates, not real nodes — exclude them so
+    // the accessible summary reflects the actual graph.
+    const nodeCount = layout.nodes.filter((n) => !n.ghost).length;
     const linkCount = layout.links.length;
     return `Sankey diagram with ${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'} and ${linkCount} ${linkCount === 1 ? 'flow' : 'flows'}.`;
   });
@@ -495,7 +545,9 @@ export class AllomoneySankeyDiagram {
    * the custom tooltip's position from the pointer.
    */
   protected onHoverNode(id: number, event: PointerEvent): void {
-    this.hovered.set({ kind: 'node', id });
+    // Hovering a ghost highlights the chain of the real node it duplicates.
+    const seedId = this.ghostAliasById().get(id) ?? id;
+    this.hovered.set({ kind: 'node', id: seedId });
     this.updateTooltipPos(event);
   }
 
@@ -533,6 +585,7 @@ export class AllomoneySankeyDiagram {
    */
   protected toggleSelectNode(id: number, event: MouseEvent): void {
     event.stopPropagation();
+    if (this.ghostAliasById().has(id)) return; // ghosts are inert phantoms
     if (!this.editingEnabled()) return;
     const cur = this.selected();
     this.selected.set(cur?.kind === 'node' && cur.id === id ? null : { kind: 'node', id });
@@ -621,7 +674,7 @@ export class AllomoneySankeyDiagram {
   private readonly editKey = computed(() => {
     const edit = this.editState();
     if (!edit) return null;
-    return edit.kind === 'node' ? `n${edit.nodeId}` : `l${edit.source}-${edit.target}`;
+    return edit.kind === 'node' ? `n${edit.nodeId}` : `l${edit.index}`;
   });
 
   /**
@@ -648,15 +701,17 @@ export class AllomoneySankeyDiagram {
     const edit = this.editState();
     const view = this.layout();
     if (!edit || edit.kind !== 'link' || !view) return null;
-    const link = view.links.find((l) => l.source === edit.source && l.target === edit.target);
+    const link = view.links.find((l) => l.sourceIndex === edit.index);
     if (!link) return null;
 
     const rows =
-      (this.canEditLinkValue() ? 1 : 0) +
+      (this.canEditLinkValue() && !edit.aggregated ? 1 : 0) +
       (this.canEditLinkSource() ? 1 : 0) +
       (this.canEditLinkTarget() ? 1 : 0);
     const box = this.placeBox(link.labelX, link.labelY, 240, rows, edit.error, view);
-    const nodes = view.nodes.map((n) => ({ id: n.id, label: n.label }));
+    // Ghost nodes are phantom cycle duplicates, not real endpoints — a link may
+    // never be pointed at one, so keep them out of the source/target options.
+    const nodes = view.nodes.filter((n) => !n.ghost).map((n) => ({ id: n.id, label: n.label }));
     return { ...box, source: edit.source, target: edit.target, seedValue: edit.seedValue, error: edit.error, nodes };
   });
 
@@ -683,6 +738,7 @@ export class AllomoneySankeyDiagram {
    */
   protected startEdit(nodeId: number): void {
     if (!this.editingEnabled()) return;
+    if (this.ghostAliasById().has(nodeId)) return; // ghosts cannot be edited
     const node = this.dataSource()?.nodes.find((n) => n?.id === nodeId);
     this.editState.set({
       kind: 'node',
@@ -700,14 +756,39 @@ export class AllomoneySankeyDiagram {
    */
   protected startLinkEdit(link: LayoutLink): void {
     if (!this.linkEditingEnabled()) return;
+    // An aggregated ribbon's value is the sum of several parallel links, so it
+    // has no single value to write back — value editing is refused (with a
+    // console message) even when canEditLinkValue is on. Source/target editing
+    // is still allowed and is applied to every combined link on commit.
+    if (link.aggregated && this.canEditLinkValue()) {
+      console.warn(
+        `[allomoney-sankey-diagram] Cannot edit the value of an aggregated flow (${link.a11yLabel}): it is the combined total of several links between the same nodes. Changing its source or target applies to every combined link.`,
+      );
+    }
+    // With value editing suppressed for an aggregate, there may be nothing left
+    // to edit (value was the only enabled capability) — then do not open at all.
+    const valueEditable = this.canEditLinkValue() && !link.aggregated;
+    if (!valueEditable && !this.canEditLinkSource() && !this.canEditLinkTarget()) return;
     this.editState.set({
       kind: 'link',
+      index: link.sourceIndex,
+      aggregated: link.aggregated,
       source: link.source,
       target: link.target,
       seedValue: String(link.value),
       error: null,
     });
   }
+
+  /**
+   * Whether the value field is editable for the open link edit: `canEditLinkValue`
+   * except on an aggregate, whose summed value cannot be written back.
+   */
+  protected readonly linkValueEditable = computed(() => {
+    const edit = this.editState();
+    if (!edit || edit.kind !== 'link') return false;
+    return this.canEditLinkValue() && !edit.aggregated;
+  });
 
   /** Dispatches ENTER / Save / click-outside to the matching commit (UC-3/UC-4 step 3). */
   protected commitEdit(): void {
@@ -777,7 +858,7 @@ export class AllomoneySankeyDiagram {
       this.editState.set(null);
       return;
     }
-    const nodeIds = new Set(this.layout()?.nodes.map((n) => n.id));
+    const nodeIds = new Set(this.layout()?.nodes.filter((n) => !n.ghost).map((n) => n.id));
 
     // Selects only offer existing node ids, but re-validate defensively.
     const nextSource = this.canEditLinkSource()
@@ -797,27 +878,39 @@ export class AllomoneySankeyDiagram {
       return;
     }
 
+    // An aggregate's value is a derived sum, so it is never written back; its
+    // value field is suppressed in the overlay.
+    const editValue = this.canEditLinkValue() && !edit.aggregated;
+
     // Business rule 2: value must be a positive number (required for a link).
-    let nextValue = edit.seedValue.length > 0 ? Number(edit.seedValue) : NaN;
-    if (this.canEditLinkValue()) {
+    let nextValue = NaN;
+    if (editValue) {
       const raw = (this.linkValueInputRef()?.nativeElement.value ?? '').trim();
       nextValue = Number(raw);
-    }
-    if (!Number.isFinite(nextValue) || nextValue <= 0) {
-      this.editState.set({ ...edit, error: 'Value must be a positive number.' });
-      return;
+      if (!Number.isFinite(nextValue) || nextValue <= 0) {
+        this.editState.set({ ...edit, error: 'Value must be a positive number.' });
+        return;
+      }
     }
 
-    // Rewrite the first link matching the original source/target (its identity).
-    let replaced = false;
-    const links = data.links.map((link) => {
-      if (replaced || !link || link.source !== edit.source || link.target !== edit.target) return link;
-      replaced = true;
+    // An aggregate stands in for every parallel link between its two nodes, so a
+    // source/target change is applied to all of them; a plain link rewrites only
+    // the exact entry that was opened (by its position in the data).
+    const targets = edit.aggregated
+      ? new Set(
+          this.validation()
+            .links.filter((l) => l.source === edit.source && l.target === edit.target)
+            .map((l) => l.index),
+        )
+      : new Set([edit.index]);
+
+    const links = data.links.map((link, i) => {
+      if (!link || !targets.has(i)) return link;
       return {
         ...link,
         ...(this.canEditLinkSource() ? { source: nextSource } : {}),
         ...(this.canEditLinkTarget() ? { target: nextTarget } : {}),
-        ...(this.canEditLinkValue() ? { value: nextValue } : {}),
+        ...(editValue ? { value: nextValue } : {}),
       };
     });
 

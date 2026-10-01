@@ -55,23 +55,27 @@
                 <g class="allomoney-sankey__node"
                    [class.allomoney-sankey--dim]="node.dimmed"
                    [class.allomoney-sankey__node--selected]="node.selected"
-                   [class.allomoney-sankey__node--editable]="editingEnabled()"
-                   [attr.role]="editingEnabled() ? 'button' : null"
-                   [attr.tabindex]="editingEnabled() ? 0 : null"
-                   [attr.aria-label]="editingEnabled() ? node.editLabel : null"
+                   [class.allomoney-sankey__node--editable]="editingEnabled() && !node.ghost"
+                   [attr.role]="editingEnabled() && !node.ghost ? 'button' : null"
+                   [attr.tabindex]="editingEnabled() && !node.ghost ? 0 : null"
+                   [attr.aria-label]="editingEnabled() && !node.ghost ? node.editLabel : null"
                    (pointerenter)="onHoverNode(node.id, $event)"
                    (pointerleave)="onLeave()"
                    (click)="toggleSelectNode(node.id, $event)"
                    (dblclick)="startEdit(node.id)"
                    (keydown.enter)="startEdit(node.id)"
                    (keydown.f2)="startEdit(node.id)">
+                    <!-- A ghost node is a phantom cycle duplicate: drawn as a
+                         border-only outline in its original's color, no fill. -->
                     <rect class="allomoney-sankey__node-rect"
+                          [class.allomoney-sankey__node-rect--ghost]="node.ghost"
                           [attr.x]="node.x"
                           [attr.y]="node.y"
                           [attr.width]="node.width"
                           [attr.height]="node.height"
                           rx="3"
-                          [style.fill]="node.color"
+                          [style.fill]="node.ghost ? 'none' : node.color"
+                          [style.stroke]="node.ghost ? node.color : null"
                           [style.--allomoney-selected-color]="node.color"/>
                     <text class="allomoney-sankey__node-label"
                           [attr.x]="node.labelX"
@@ -191,7 +195,7 @@
                             </select>
                         </label>
                     }
-                    @if (canEditLinkValue()) {
+                    @if (linkValueEditable()) {
                         <label class="allomoney-sankey__edit-field">
                             <span class="allomoney-sankey__edit-label">Value</span>
                             <input #linkValueInput
