@@ -352,15 +352,27 @@
   display: flex;
   gap: 8px;
   justify-content: space-between;
-  white-space: nowrap;
+  align-items: baseline;
 }
 
 .allomoney-sankey__tooltip-label {
+  // The short field label ("Source"/…) always stays on one line; only the value
+  // beside it wraps.
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--allomoney-tooltip-muted);
 }
 
 .allomoney-sankey__tooltip-value {
+  // Wrap a value that does not fit onto the next line, breaking even an
+  // unbroken run (a long id or a huge number) so it never overflows the tooltip.
+  // `min-inline-size: 0` lets the flex item shrink below its content width so the
+  // break can happen; the box's `max-inline-size` bounds the width and the height
+  // grows to fit the wrapped lines.
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   font-weight: 700;
+  text-align: right;
 }
 
 // --- UC-3 edit overlay ---------------------------------------------------

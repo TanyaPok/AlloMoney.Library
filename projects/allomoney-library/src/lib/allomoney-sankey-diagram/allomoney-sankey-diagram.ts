@@ -39,6 +39,12 @@ interface RenderNode extends LayoutNode {
   readonly selected: boolean;
   /** Accessible name for the node's editable `button`, precomputed. */
   readonly editLabel: string;
+  /**
+   * The node name as shown in the diagram: {@link LayoutNode.label} truncated to
+   * {@link AllomoneySankeyDiagram.maxDisplayedNodeName} characters plus an
+   * ellipsis when it is longer. The untruncated `label` is kept for assistive tech.
+   */
+  readonly displayLabel: string;
 }
 
 /** A link paired with its current hover-dim state. */
@@ -246,6 +252,11 @@ export class AllomoneySankeyDiagram {
     alias: 'height',
     transform: numberAttribute,
   });
+  /** Raw `[maxDisplayedNodeName]` element input (see resolved {@link maxDisplayedNodeName}). */
+  readonly maxDisplayedNodeNameInput = input(17, {
+    alias: 'maxDisplayedNodeName',
+    transform: numberAttribute,
+  });
 
   /**
    * The resolved visual theme: {@link options}`.theme` when set, else the
@@ -287,6 +298,28 @@ export class AllomoneySankeyDiagram {
   protected readonly noDataMessage = computed<string>(
     () => this.options().noDataMessage ?? this.noDataMessageInput() ?? 'No Data',
   );
+
+  /**
+   * The resolved maximum number of characters of a node's name to display:
+   * {@link options}`.maxDisplayedNodeName` when set, else the
+   * `[maxDisplayedNodeName]` input, else `17`. A longer name is shown truncated
+   * to this many characters plus an ellipsis (the full name stays available to
+   * assistive technology). A non-finite or non-positive value falls back to `17`.
+   */
+  protected readonly maxDisplayedNodeName = computed<number>(() => {
+    const raw = this.options().maxDisplayedNodeName ?? this.maxDisplayedNodeNameInput();
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 17;
+  });
+
+  /**
+   * Truncates a node name to the resolved {@link maxDisplayedNodeName} for
+   * display, appending an ellipsis when it was shortened. Used for both the
+   * on-node label and the tooltip's source/target rows, so what the user reads is
+   * consistent; the untruncated name remains available to assistive technology.
+   */
+  private truncateName(label: string, max: number): string {
+    return label.length > max ? `${label.slice(0, max)}…` : label;
+  }
 
   /**
    * The resolved host size in CSS pixels (or `null` per axis for the default
@@ -496,6 +529,7 @@ export class AllomoneySankeyDiagram {
     if (!view) return [];
     const chain = this.activeChain();
     const sel = this.selected();
+    const max = this.maxDisplayedNodeName();
     return view.nodes.map((node) => {
       // A ghost shares its real twin's chain membership, so it lights and dims in
       // lockstep with the node it duplicates rather than looking orphaned.
@@ -507,6 +541,9 @@ export class AllomoneySankeyDiagram {
         editLabel: node.valueLabel
           ? `Edit node ${node.label}, value ${node.valueLabel}`
           : `Edit node ${node.label}`,
+        // Truncate the visible name past the limit; the full name stays in the
+        // a11y editLabel and the visually-hidden flow list.
+        displayLabel: this.truncateName(node.label, max),
       };
     });
   });
@@ -621,15 +658,40 @@ export class AllomoneySankeyDiagram {
     this.selected.set(null);
   }
 
+  /**
+   * Keeps selection and keyboard focus in sync so only one element is ever
+   * highlighted at a time. Moving focus onto an element other than the current
+   * selection — e.g. tabbing to a node after selecting a link — clears that
+   * stale selection, so its coloured edge no longer lingers alongside the newly
+   * focused element's focus ring. A click that selects the just-focused element
+   * still runs afterwards (focus fires before click), so click-to-select is
+   * unaffected; focusing the already-selected element leaves it selected.
+   */
+  protected onFocusNode(id: number): void {
+    const cur = this.selected();
+    if (cur && !(cur.kind === 'node' && cur.id === id)) this.selected.set(null);
+  }
+
+  /** Clears a selection on a different element when a link ribbon gains focus (see {@link onFocusNode}). */
+  protected onFocusLink(id: string): void {
+    const cur = this.selected();
+    if (cur && !(cur.kind === 'link' && cur.id === id)) this.selected.set(null);
+  }
+
   // --- custom hover tooltip ------------------------------------------------
 
   /** Pointer position (host-relative px) + edge-flip flags, or `null` when idle. */
   private readonly tooltipPos = signal<Omit<TooltipView, 'rows'> | null>(null);
 
-  /** Node id → display label, rebuilt only when the layout changes. */
+  /**
+   * Node id → display label (truncated to {@link maxDisplayedNodeName}), used for
+   * the tooltip's source/target rows so they match the on-node labels. Rebuilt
+   * when the layout or the display limit changes.
+   */
   private readonly nodeLabelById = computed(() => {
     const view = this.layout();
-    return new Map(view ? view.nodes.map((n) => [n.id, n.label]) : []);
+    const max = this.maxDisplayedNodeName();
+    return new Map(view ? view.nodes.map((n) => [n.id, this.truncateName(n.label, max)]) : []);
   });
 
   /**

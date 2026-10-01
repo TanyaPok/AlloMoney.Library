@@ -40,11 +40,11 @@ export class App {
     // protected readonly data = signal<SankeyData | null | undefined>(null);
     protected readonly data = signal<SankeyData | null | undefined>({
         nodes: [
-            {id: 0},
+            {id: 0, name:"War and Peace (Russian: Война и мир, romanized: Voyna i mir; pre-reform Russian: Война и миръ; IPA: [vɐjˈna i ˈmʲir]) is an epic novel by the Russian author Leo Tolstoy. Set during the Napoleonic Wars, the work comprises both a fictional narrative and chapters in which Tolstoy discusses history and philosophy. An early version was published serially beginning in 1865, after which the entire book was rewritten and published in 1869. The novel has claims to be the greatest novel written. It is regarded, with Anna Karenina, as Tolstoy's finest literary achievement, and it remains an internationally praised classic of world literature.[1][2][3]"},
             {id: 1},
             {id: 2},
             {id: 3},
-            {id: 4, name: "qwer"},
+            {id: 4},
             {id: 5},
             {id: 6}
         ],
@@ -54,7 +54,7 @@ export class App {
             // {source: 0, target: 3, value: 1},
             // {source: 0, target: 4, value: 1},
 
-            {source: 2, target: 0, value: 1},
+            //{source: 2, target: 0, value: 1},
             {source: 2, target: 0, value: 0.5},
 
             // {source: 2, target: 1, value: 1},
@@ -81,9 +81,10 @@ export class App {
         canEditNodeName: true,
         canEditNodeValue: true,
         currency: 'USD',
-        //canEditLinkValue: true,
+        canEditLinkValue: true,
         canEditLinkSource: true,
         canEditLinkTarget: true,
-        canAggregateLinks: false,
+        canAggregateLinks: true,
+        maxDisplayedNodeName: 20
     };
 }

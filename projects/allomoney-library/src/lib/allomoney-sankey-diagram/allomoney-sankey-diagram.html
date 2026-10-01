@@ -37,6 +37,7 @@
                       [style.--allomoney-selected-color]="link.color"
                       (pointerenter)="onHoverLink(link, $event)"
                       (pointerleave)="onLeave()"
+                      (focus)="onFocusLink(link.id)"
                       (click)="toggleSelectLink(link, $event)"
                       (dblclick)="startLinkEdit(link)"
                       (keydown.enter)="startLinkEdit(link)"
@@ -61,6 +62,7 @@
                    [attr.aria-label]="editingEnabled() && !node.ghost ? node.editLabel : null"
                    (pointerenter)="onHoverNode(node.id, $event)"
                    (pointerleave)="onLeave()"
+                   (focus)="onFocusNode(node.id)"
                    (click)="toggleSelectNode(node.id, $event)"
                    (dblclick)="startEdit(node.id)"
                    (keydown.enter)="startEdit(node.id)"
@@ -82,7 +84,7 @@
                           [attr.y]="node.labelY"
                           [attr.text-anchor]="node.labelAnchor"
                           dominant-baseline="middle">
-                        {{ node.label }}
+                        {{ node.displayLabel }}
                     </text>
                 </g>
             }
