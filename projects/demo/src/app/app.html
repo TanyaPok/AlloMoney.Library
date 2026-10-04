@@ -1,6 +1,7 @@
 <main class="demo">
     <div class="diagram-div">
-        <allomoney-sankey-diagram [options]="options" [dataSource]="data()" (dataSourceChange)="data.set($event)"/>
+        <allomoney-sankey-diagram [title]="title()" [options]="options" [dataSource]="data()"
+                                  (dataSourceChange)="data.set($event)"/>
     </div>
 
     @let d = data();

@@ -23,6 +23,7 @@ import type {
 } from './models/sankey-data';
 import {
   computeSankeyLayout,
+  DEFAULT_LAYOUT_OPTIONS,
   type LayoutLink,
   type LayoutNode,
   type SankeyLayout,
@@ -538,6 +539,9 @@ export class AllomoneySankeyDiagram {
       this.orientation(),
       this.currency(),
       this.canAggregateLinks(),
+      // Vertical orientation widens the gap between nodes so names up to this
+      // length fit above them without overlapping (see computeSankeyLayout).
+      { ...DEFAULT_LAYOUT_OPTIONS, maxDisplayedNodeName: this.maxDisplayedNodeName() },
     );
   });
 
