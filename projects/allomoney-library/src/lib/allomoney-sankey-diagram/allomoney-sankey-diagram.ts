@@ -1,4 +1,5 @@
 import {
+  afterNextRender,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
@@ -6,6 +7,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   model,
   numberAttribute,
@@ -21,6 +23,7 @@ import type {
 } from './models/sankey-data';
 import {
   computeSankeyLayout,
+  DEFAULT_LAYOUT_OPTIONS,
   type LayoutLink,
   type LayoutNode,
   type SankeyLayout,
@@ -37,6 +40,12 @@ interface RenderNode extends LayoutNode {
   readonly selected: boolean;
   /** Accessible name for the node's editable `button`, precomputed. */
   readonly editLabel: string;
+  /**
+   * The node name as shown in the diagram: {@link LayoutNode.label} truncated to
+   * {@link AllomoneySankeyDiagram.maxDisplayedNodeName} characters plus an
+   * ellipsis when it is longer. The untruncated `label` is kept for assistive tech.
+   */
+  readonly displayLabel: string;
 }
 
 /** A link paired with its current hover-dim state. */
@@ -78,6 +87,13 @@ interface TooltipView {
 interface EditDraftBase {
   /** Validation message to show, or `null` while the draft is clean. */
   readonly error: string | null;
+  /**
+   * Which field {@link error} refers to, so only that control is flagged
+   * `aria-invalid` (and given the error border) rather than every input. A value
+   * error uses `'value'`; a link's source/target error uses `'endpoints'`.
+   * `null` whenever there is no error.
+   */
+  readonly errorField: 'value' | 'endpoints' | null;
 }
 
 /** A node edit in progress (UC-3): which node, plus the seed field values. */
@@ -117,10 +133,15 @@ interface LinkEditDraft extends EditDraftBase {
 /** The element being edited in place, or `null` when no edit is open. */
 type EditDraft = NodeEditDraft | LinkEditDraft;
 
-/** A selectable node for the link source/target dropdowns. */
+/** A selectable node option in a link source/target listbox. */
 interface NodeOption {
   readonly id: number;
+  /** Display label, truncated to {@link AllomoneySankeyDiagram.maxDisplayedNodeName}. */
   readonly label: string;
+  /** Unique DOM id for the `role="option"` element (aria-activedescendant target). */
+  readonly optionId: string;
+  /** `true` when this option is the listbox's current selection. */
+  readonly selected: boolean;
 }
 
 /** Placed geometry common to both edit overlays. */
@@ -136,15 +157,44 @@ interface NodeEditView extends EditBox {
   readonly seedName: string;
   readonly seedValue: string;
   readonly error: string | null;
+  /** Which field {@link error} refers to; see {@link EditDraftBase.errorField}. */
+  readonly errorField: 'value' | 'endpoints' | null;
 }
 
-/** The link edit overlay: geometry, seeds, and the selectable nodes. */
+/** The link edit overlay: geometry, seeds, and the source/target combobox options. */
 interface LinkEditView extends EditBox {
   readonly source: number;
   readonly target: number;
   readonly seedValue: string;
   readonly error: string | null;
-  readonly nodes: readonly NodeOption[];
+  /** Which field {@link error} refers to; see {@link EditDraftBase.errorField}. */
+  readonly errorField: 'value' | 'endpoints' | null;
+  /** Options for the source combobox popup (each flagged selected/with a DOM id). */
+  readonly sourceOptions: readonly NodeOption[];
+  /** Options for the target combobox popup. */
+  readonly targetOptions: readonly NodeOption[];
+  /**
+   * The selected source node's display label (truncated to
+   * {@link AllomoneySankeyDiagram.maxDisplayedNodeName}), shown on the collapsed
+   * source combobox trigger.
+   */
+  readonly sourceLabel: string;
+  /** The selected target node's display label, shown on the collapsed target trigger. */
+  readonly targetLabel: string;
+  /** `true` while the source combobox popup is open. */
+  readonly sourceOpen: boolean;
+  /** `true` while the target combobox popup is open. */
+  readonly targetOpen: boolean;
+  /**
+   * `true` when the open popup drops upward (above its trigger) because there is
+   * not enough room below it in the viewBox; `false` (the default) drops down.
+   * When it is up, the overlay content is bottom-anchored so the trigger stays put.
+   */
+  readonly dropUp: boolean;
+  /** `id` of the selected source option — the source combobox's `aria-activedescendant`. */
+  readonly sourceActiveId: string;
+  /** `id` of the selected target option — the target combobox's `aria-activedescendant`. */
+  readonly targetActiveId: string;
 }
 
 /** Monotonic id source so each instance gets unique `aria` target ids. */
@@ -192,10 +242,16 @@ let uidCounter = 0;
 export class AllomoneySankeyDiagram {
   private readonly config = inject(ALLOMONEY_LIBRARY_CONFIG);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   private readonly uid = ++uidCounter;
 
   /** Element id for the SVG `<desc>` (accessible summary). */
   protected readonly descId = `allomoney-sankey-desc-${this.uid}`;
+
+  /** DOM id of the source combobox's listbox popup (the trigger's `aria-controls`). */
+  protected readonly sourceListId = `allomoney-sankey-src-list-${this.uid}`;
+  /** DOM id of the target combobox's listbox popup (the trigger's `aria-controls`). */
+  protected readonly targetListId = `allomoney-sankey-tgt-list-${this.uid}`;
 
   /**
    * The diagram data. When it is an Empty State or every
@@ -243,6 +299,11 @@ export class AllomoneySankeyDiagram {
     alias: 'height',
     transform: numberAttribute,
   });
+  /** Raw `[maxDisplayedNodeName]` element input (see resolved {@link maxDisplayedNodeName}). */
+  readonly maxDisplayedNodeNameInput = input(17, {
+    alias: 'maxDisplayedNodeName',
+    transform: numberAttribute,
+  });
 
   /**
    * The resolved visual theme: {@link options}`.theme` when set, else the
@@ -259,9 +320,13 @@ export class AllomoneySankeyDiagram {
    * {@link options}`.currency` when set, else the `[currency]` input, else
    * `null`.
    */
-  protected readonly currency = computed<string | null>(
-    () => this.options().currency ?? this.currencyInput() ?? null,
-  );
+  protected readonly currency = computed<string | null>(() => {
+    // `null` is a meaningful option value here ("plain numbers"), so an explicit
+    // `options.currency` — including `null` — wins; only an absent (`undefined`)
+    // key falls through to the `[currency]` input, then to the `null` default.
+    const opt = this.options().currency;
+    return opt !== undefined ? opt : (this.currencyInput() ?? null);
+  });
 
   /**
    * The resolved flow direction: {@link options}`.orientation` when set, else
@@ -282,28 +347,56 @@ export class AllomoneySankeyDiagram {
   );
 
   /**
+   * The resolved maximum number of characters of a node's name to display:
+   * {@link options}`.maxDisplayedNodeName` when set, else the
+   * `[maxDisplayedNodeName]` input, else `17`. A longer name is shown truncated
+   * to this many characters plus an ellipsis (the full name stays available to
+   * assistive technology). A non-finite or non-positive value falls back to `17`.
+   */
+  protected readonly maxDisplayedNodeName = computed<number>(() => {
+    const raw = this.options().maxDisplayedNodeName ?? this.maxDisplayedNodeNameInput();
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 17;
+  });
+
+  /**
+   * Truncates a node name to the resolved {@link maxDisplayedNodeName} for
+   * display, appending an ellipsis when it was shortened. Used for both the
+   * on-node label and the tooltip's source/target rows, so what the user reads is
+   * consistent; the untruncated name remains available to assistive technology.
+   */
+  private truncateName(label: string, max: number): string {
+    return label.length > max ? `${label.slice(0, max)}…` : label;
+  }
+
+  /**
    * The resolved host size in CSS pixels (or `null` per axis for the default
    * 100%-of-container size). {@link options}`.width`/`.height` win over the
    * `[width]`/`[height]` inputs; an invalid or display-distorting request is
    * discarded (its error logged) and the default size is used. See
    * {@link resolveDimensions}.
    */
-  protected readonly dimensions = computed(() =>
-    resolveDimensions(
-      this.options().width ?? this.widthInput(),
-      this.options().height ?? this.heightInput(),
-    ),
-  );
+  protected readonly dimensions = computed(() => {
+    // `null` is a meaningful option value here ("default 100% size"), so an
+    // explicit `options.width`/`.height` — including `null` — wins; only an absent
+    // (`undefined`) key falls through to the `[width]`/`[height]` input.
+    const opts = this.options();
+    return resolveDimensions(
+      opts.width !== undefined ? opts.width : this.widthInput(),
+      opts.height !== undefined ? opts.height : this.heightInput(),
+    );
+  });
 
   /**
-   * The diagram's natural (1:1) size as CSS length strings, published to the
-   * SCSS as `--allomoney-natural-w/h`. The canvas renders at this size (and
-   * scrolls) when scrolling is on, or is scaled down to fit when it is off.
-   * `null` in the empty state, where there is no diagram to size.
+   * The diagram's natural (1:1) size as unitless user-unit numbers, published to
+   * the SCSS as `--allomoney-natural-w/h`. The canvas renders at this size (and
+   * scrolls) when scrolling is on, or is scaled down to fit when it is off. Kept
+   * unitless so the value is valid both as an `aspect-ratio` operand and, via
+   * `calc(... * 1px)`, as a pixel length. `null` in the empty state, where there
+   * is no diagram to size.
    */
-  protected readonly naturalSize = computed<{ readonly w: string; readonly h: string } | null>(() => {
+  protected readonly naturalSize = computed<{ readonly w: number; readonly h: number } | null>(() => {
     const view = this.layout();
-    return view ? { w: `${view.width}px`, h: `${view.height}px` } : null;
+    return view ? { w: view.width, h: view.height } : null;
   });
 
   /**
@@ -446,6 +539,9 @@ export class AllomoneySankeyDiagram {
       this.orientation(),
       this.currency(),
       this.canAggregateLinks(),
+      // Vertical orientation widens the gap between nodes so names up to this
+      // length fit above them without overlapping (see computeSankeyLayout).
+      { ...DEFAULT_LAYOUT_OPTIONS, maxDisplayedNodeName: this.maxDisplayedNodeName() },
     );
   });
 
@@ -483,6 +579,7 @@ export class AllomoneySankeyDiagram {
     if (!view) return [];
     const chain = this.activeChain();
     const sel = this.selected();
+    const max = this.maxDisplayedNodeName();
     return view.nodes.map((node) => {
       // A ghost shares its real twin's chain membership, so it lights and dims in
       // lockstep with the node it duplicates rather than looking orphaned.
@@ -494,6 +591,9 @@ export class AllomoneySankeyDiagram {
         editLabel: node.valueLabel
           ? `Edit node ${node.label}, value ${node.valueLabel}`
           : `Edit node ${node.label}`,
+        // Truncate the visible name past the limit; the full name stays in the
+        // a11y editLabel and the visually-hidden flow list.
+        displayLabel: this.truncateName(node.label, max),
       };
     });
   });
@@ -608,15 +708,40 @@ export class AllomoneySankeyDiagram {
     this.selected.set(null);
   }
 
+  /**
+   * Keeps selection and keyboard focus in sync so only one element is ever
+   * highlighted at a time. Moving focus onto an element other than the current
+   * selection — e.g. tabbing to a node after selecting a link — clears that
+   * stale selection, so its coloured edge no longer lingers alongside the newly
+   * focused element's focus ring. A click that selects the just-focused element
+   * still runs afterwards (focus fires before click), so click-to-select is
+   * unaffected; focusing the already-selected element leaves it selected.
+   */
+  protected onFocusNode(id: number): void {
+    const cur = this.selected();
+    if (cur && !(cur.kind === 'node' && cur.id === id)) this.selected.set(null);
+  }
+
+  /** Clears a selection on a different element when a link ribbon gains focus (see {@link onFocusNode}). */
+  protected onFocusLink(id: string): void {
+    const cur = this.selected();
+    if (cur && !(cur.kind === 'link' && cur.id === id)) this.selected.set(null);
+  }
+
   // --- custom hover tooltip ------------------------------------------------
 
   /** Pointer position (host-relative px) + edge-flip flags, or `null` when idle. */
   private readonly tooltipPos = signal<Omit<TooltipView, 'rows'> | null>(null);
 
-  /** Node id → display label, rebuilt only when the layout changes. */
+  /**
+   * Node id → display label (truncated to {@link maxDisplayedNodeName}), used for
+   * the tooltip's source/target rows so they match the on-node labels. Rebuilt
+   * when the layout or the display limit changes.
+   */
   private readonly nodeLabelById = computed(() => {
     const view = this.layout();
-    return new Map(view ? view.nodes.map((n) => [n.id, n.label]) : []);
+    const max = this.maxDisplayedNodeName();
+    return new Map(view ? view.nodes.map((n) => [n.id, this.truncateName(n.label, max)]) : []);
   });
 
   /**
@@ -660,12 +785,23 @@ export class AllomoneySankeyDiagram {
   /** The element currently being edited, or `null` when no edit is open. */
   private readonly editState = signal<EditDraft | null>(null);
 
+  /**
+   * Which source/target combobox popup is open in the link overlay, or `null`
+   * when both are collapsed. Only one is ever open at a time, so the overlay can
+   * reserve just enough extra height for a single open popup (see {@link linkEditView}).
+   */
+  private readonly openCombo = signal<'source' | 'target' | null>(null);
+
   /** Live control handles, read at commit time (uncontrolled inputs). */
   private readonly nameInputRef = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly valueInputRef = viewChild<ElementRef<HTMLInputElement>>('valueInput');
   private readonly linkValueInputRef = viewChild<ElementRef<HTMLInputElement>>('linkValueInput');
-  private readonly sourceSelectRef = viewChild<ElementRef<HTMLSelectElement>>('sourceSelect');
-  private readonly targetSelectRef = viewChild<ElementRef<HTMLSelectElement>>('targetSelect');
+  /** The source/target combobox triggers (focused when the overlay opens). */
+  private readonly sourceComboRef = viewChild<ElementRef<HTMLElement>>('sourceCombo');
+  private readonly targetComboRef = viewChild<ElementRef<HTMLElement>>('targetCombo');
+  /** The source/target listbox popups — present only while the matching combobox is open. */
+  private readonly sourceListboxRef = viewChild<ElementRef<HTMLElement>>('sourceListbox');
+  private readonly targetListboxRef = viewChild<ElementRef<HTMLElement>>('targetListbox');
 
   /**
    * A stable key for the open edit — changes only when a different element is
@@ -689,8 +825,15 @@ export class AllomoneySankeyDiagram {
     if (!node) return null;
 
     const rows = (this.canEditNodeName() ? 1 : 0) + (this.canEditNodeValue() ? 1 : 0);
-    const box = this.placeBox(node.x + node.width / 2, node.y + node.height / 2, 220, rows, edit.error, view);
-    return { ...box, seedName: edit.seedName, seedValue: edit.seedValue, error: edit.error };
+    const height = 78 + rows * 56 + (edit.error ? 30 : 0);
+    const box = this.placeBox(node.x + node.width / 2, node.y + node.height / 2, 220, height, view);
+    return {
+      ...box,
+      seedName: edit.seedName,
+      seedValue: edit.seedValue,
+      error: edit.error,
+      errorField: edit.errorField,
+    };
   });
 
   /**
@@ -704,27 +847,119 @@ export class AllomoneySankeyDiagram {
     const link = view.links.find((l) => l.sourceIndex === edit.index);
     if (!link) return null;
 
-    const rows =
-      (this.canEditLinkValue() && !edit.aggregated ? 1 : 0) +
-      (this.canEditLinkSource() ? 1 : 0) +
-      (this.canEditLinkTarget() ? 1 : 0);
-    const box = this.placeBox(link.labelX, link.labelY, 240, rows, edit.error, view);
     // Ghost nodes are phantom cycle duplicates, not real endpoints — a link may
-    // never be pointed at one, so keep them out of the source/target options.
-    const nodes = view.nodes.filter((n) => !n.ghost).map((n) => ({ id: n.id, label: n.label }));
-    return { ...box, source: edit.source, target: edit.target, seedValue: edit.seedValue, error: edit.error, nodes };
+    // never be pointed at one, so keep them out of the source/target options. The
+    // option labels honour maxDisplayedNodeName so they match the on-diagram names.
+    const max = this.maxDisplayedNodeName();
+    const base = view.nodes
+      .filter((n) => !n.ghost)
+      .map((n) => ({ id: n.id, label: this.truncateName(n.label, max) }));
+    // Per-list options carry a unique DOM id (namespaced by instance + side, since
+    // the same node appears in both listboxes) and a selected flag.
+    const sourceOptions: NodeOption[] = base.map((o) => ({
+      ...o,
+      optionId: `allomoney-sankey-src-${this.uid}-${o.id}`,
+      selected: o.id === edit.source,
+    }));
+    const targetOptions: NodeOption[] = base.map((o) => ({
+      ...o,
+      optionId: `allomoney-sankey-tgt-${this.uid}-${o.id}`,
+      selected: o.id === edit.target,
+    }));
+
+    // Size the collapsed overlay from what it actually shows. Each combobox is a
+    // single label+trigger row (like the value field).
+    const open = this.openCombo();
+    const fieldH = 56; // label + single control row
+    const valueH = this.canEditLinkValue() && !edit.aggregated ? fieldH : 0;
+    const sourceH = this.canEditLinkSource() ? fieldH : 0;
+    const targetH = this.canEditLinkTarget() ? fieldH : 0;
+    const baseHeight = 78 + valueH + sourceH + targetH + (edit.error ? 30 : 0);
+
+    // Collapsed placement: centered on the link's value label, clamped in the
+    // viewBox. This stays fixed when a combobox opens, so the overlay never jumps.
+    const baseBox = this.placeBox(link.labelX, link.labelY, 240, baseHeight, view);
+
+    // When a combobox is open, grow the <foreignObject> just enough (and in the
+    // right direction) that its popup isn't clipped — downward by default, upward
+    // only when there isn't room below the trigger.
+    const placed = open ? this.placeComboPopup(open, baseBox, baseHeight, view) : null;
+
+    const selectedLabel = (opts: readonly NodeOption[], id: number): string =>
+      opts.find((o) => o.id === id)?.label ?? String(id);
+    return {
+      ...(placed?.box ?? baseBox),
+      source: edit.source,
+      target: edit.target,
+      seedValue: edit.seedValue,
+      error: edit.error,
+      errorField: edit.errorField,
+      sourceOptions,
+      targetOptions,
+      sourceLabel: selectedLabel(sourceOptions, edit.source),
+      targetLabel: selectedLabel(targetOptions, edit.target),
+      sourceOpen: open === 'source',
+      targetOpen: open === 'target',
+      dropUp: placed?.dropUp ?? false,
+      sourceActiveId: `allomoney-sankey-src-${this.uid}-${edit.source}`,
+      targetActiveId: `allomoney-sankey-tgt-${this.uid}-${edit.target}`,
+    };
   });
 
-  /** Centers a `rows`-field overlay on (cx, cy), clamped inside the viewBox. */
+  /**
+   * Places the open combobox's listbox popup. The popup opens below its trigger
+   * (overlaying the fields beneath it) and the overlay grows downward just enough
+   * to hold it. It flips above the trigger only when there isn't room below it in
+   * the viewBox — and then the box grows upward instead, keeping its bottom edge
+   * fixed so the trigger (and the rest of the overlay) stay exactly where they are.
+   */
+  private placeComboPopup(
+    which: 'source' | 'target',
+    base: EditBox,
+    baseHeight: number,
+    view: SankeyLayout,
+  ): { readonly box: EditBox; readonly dropUp: boolean } {
+    // Popup reserve (capped list + border + gap) and the overlay metrics used to
+    // locate the open trigger within the content — must track the SCSS.
+    const POPUP_H = 126;
+    const PAD_TOP = 10;
+    const FIELD_BLOCK = 46; // label + gap + control
+    const FIELD_GAP = 8;
+    const INPUT_H = 28;
+
+    // Fields render in order (source, target, value), so a field before the open
+    // trigger shifts it down by one block.
+    const before = which === 'target' && this.canEditLinkSource() ? FIELD_BLOCK + FIELD_GAP : 0;
+    const triggerTop = base.y + PAD_TOP + before;
+    const triggerBottom = triggerTop + INPUT_H;
+    const roomBelow = view.height - triggerBottom;
+    const roomAbove = triggerTop;
+
+    if (!(roomBelow < POPUP_H && roomAbove > roomBelow)) {
+      // Drop down: ensure the box extends POPUP_H below the trigger. Content is
+      // top-anchored, so the extra height is added at the bottom and the trigger
+      // does not move.
+      const height = Math.max(baseHeight, PAD_TOP + before + INPUT_H + POPUP_H);
+      const y = Math.min(base.y, Math.max(0, view.height - height));
+      return { box: { x: base.x, y, width: base.width, height }, dropUp: false };
+    }
+
+    // Drop up: keep the box bottom fixed and extend the top so there is POPUP_H
+    // above the trigger. Content is bottom-anchored (see SCSS), so the trigger
+    // stays put and the extra height opens above it.
+    const bottom = base.y + baseHeight;
+    const y = Math.max(0, Math.min(base.y, triggerTop - POPUP_H));
+    return { box: { x: base.x, y, width: base.width, height: bottom - y }, dropUp: true };
+  }
+
+  /** Centers a `width`×`height` overlay on (cx, cy), clamped inside the viewBox. */
   private placeBox(
     cx: number,
     cy: number,
     width: number,
-    rows: number,
-    error: string | null,
+    height: number,
     view: SankeyLayout,
   ): EditBox {
-    const height = 78 + rows * 56 + (error ? 30 : 0);
     const x = Math.max(0, Math.min(cx - width / 2, view.width - width));
     const y = Math.max(0, Math.min(cy - height / 2, view.height - height));
     return { x, y, width, height };
@@ -740,12 +975,14 @@ export class AllomoneySankeyDiagram {
     if (!this.editingEnabled()) return;
     if (this.ghostAliasById().has(nodeId)) return; // ghosts cannot be edited
     const node = this.dataSource()?.nodes.find((n) => n?.id === nodeId);
+    this.openCombo.set(null);
     this.editState.set({
       kind: 'node',
       nodeId,
       seedName: node && typeof node.name === 'string' ? node.name : '',
       seedValue: node && node.value != null ? String(node.value) : '',
       error: null,
+      errorField: null,
     });
   }
 
@@ -769,6 +1006,7 @@ export class AllomoneySankeyDiagram {
     // to edit (value was the only enabled capability) — then do not open at all.
     const valueEditable = this.canEditLinkValue() && !link.aggregated;
     if (!valueEditable && !this.canEditLinkSource() && !this.canEditLinkTarget()) return;
+    this.openCombo.set(null);
     this.editState.set({
       kind: 'link',
       index: link.sourceIndex,
@@ -777,7 +1015,146 @@ export class AllomoneySankeyDiagram {
       target: link.target,
       seedValue: String(link.value),
       error: null,
+      errorField: null,
     });
+  }
+
+  /** Selects a node as the open link edit's source (combobox option pick/keyboard). */
+  protected setEditSource(id: number): void {
+    const edit = this.editState();
+    if (!edit || edit.kind !== 'link') return;
+    this.editState.set({ ...edit, source: id, error: null, errorField: null });
+  }
+
+  /** Selects a node as the open link edit's target (combobox option pick/keyboard). */
+  protected setEditTarget(id: number): void {
+    const edit = this.editState();
+    if (!edit || edit.kind !== 'link') return;
+    this.editState.set({ ...edit, target: id, error: null, errorField: null });
+  }
+
+  /** Toggles a source/target combobox popup open/closed (trigger click). */
+  protected toggleCombo(which: 'source' | 'target'): void {
+    this.openCombo.set(this.openCombo() === which ? null : which);
+  }
+
+  /** Closes the given combobox popup if it is the one currently open. */
+  private closeCombo(which: 'source' | 'target'): void {
+    if (this.openCombo() === which) this.openCombo.set(null);
+  }
+
+  /** Picks an option from the source popup: select it, close, and refocus the trigger. */
+  protected chooseSource(id: number): void {
+    this.setEditSource(id);
+    this.closeCombo('source');
+    this.sourceComboRef()?.nativeElement.focus();
+  }
+
+  /** Picks an option from the target popup: select it, close, and refocus the trigger. */
+  protected chooseTarget(id: number): void {
+    this.setEditTarget(id);
+    this.closeCombo('target');
+    this.targetComboRef()?.nativeElement.focus();
+  }
+
+  /** Closes a combobox popup when focus leaves its trigger+popup wrapper. */
+  protected onComboFocusOut(event: FocusEvent, which: 'source' | 'target'): void {
+    const wrap = event.currentTarget as HTMLElement;
+    const next = event.relatedTarget as Node | null;
+    if (next && wrap.contains(next)) return;
+    this.closeCombo(which);
+  }
+
+  /**
+   * Keyboard control for a source/target combobox (ARIA select-only combobox).
+   * When collapsed: arrow keys open the popup, Space/Enter also open (Enter stays
+   * free to commit the whole edit when it does nothing here), and Escape bubbles
+   * to cancel. When open: arrows/Home/End move the selection, Enter/Space/Tab
+   * confirm and close, and Escape closes just the popup.
+   */
+  protected onComboKeydown(event: KeyboardEvent, which: 'source' | 'target'): void {
+    const open = this.openCombo() === which;
+    switch (event.key) {
+      case 'ArrowDown':
+      case 'ArrowUp':
+      case 'ArrowLeft':
+      case 'ArrowRight':
+      case 'Home':
+      case 'End':
+        event.preventDefault();
+        if (!open) this.openCombo.set(which);
+        else this.moveComboSelection(event, which);
+        break;
+      case ' ':
+        event.preventDefault();
+        if (open) {
+          event.stopPropagation();
+          this.closeCombo(which);
+        } else {
+          this.openCombo.set(which);
+        }
+        break;
+      case 'Enter':
+        // Open: confirm the active option and close. Collapsed: let it bubble so
+        // Enter commits the edit (Save), consistent with the rest of the dialog.
+        if (open) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.closeCombo(which);
+        }
+        break;
+      case 'Escape':
+        // Open: close just the popup. Collapsed: let it bubble to cancel the edit.
+        if (open) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.closeCombo(which);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Moves the selection within an open combobox popup with the arrow and Home/End
+   * keys (single-select: selection follows the active option), and scrolls the
+   * newly active option into view.
+   */
+  private moveComboSelection(event: KeyboardEvent, which: 'source' | 'target'): void {
+    const edit = this.editState();
+    const view = this.linkEditView();
+    if (!edit || edit.kind !== 'link' || !view) return;
+    const options = which === 'source' ? view.sourceOptions : view.targetOptions;
+    if (options.length === 0) return;
+
+    const currentId = which === 'source' ? edit.source : edit.target;
+    const current = Math.max(0, options.findIndex((o) => o.id === currentId));
+    let next = current;
+    switch (event.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+        next = Math.min(options.length - 1, current + 1);
+        break;
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        next = Math.max(0, current - 1);
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = options.length - 1;
+        break;
+      default:
+        return;
+    }
+    const option = options[next];
+    if (which === 'source') this.setEditSource(option.id);
+    else this.setEditTarget(option.id);
+
+    const listbox = (which === 'source' ? this.sourceListboxRef() : this.targetListboxRef())?.nativeElement;
+    listbox?.querySelector(`[id="${option.optionId}"]`)?.scrollIntoView({ block: 'nearest' });
   }
 
   /**
@@ -789,6 +1166,12 @@ export class AllomoneySankeyDiagram {
     if (!edit || edit.kind !== 'link') return false;
     return this.canEditLinkValue() && !edit.aggregated;
   });
+
+  /** Closes any open edit overlay and collapses its comboboxes. */
+  private closeEdit(): void {
+    this.openCombo.set(null);
+    this.editState.set(null);
+  }
 
   /** Dispatches ENTER / Save / click-outside to the matching commit (UC-3/UC-4 step 3). */
   protected commitEdit(): void {
@@ -807,7 +1190,7 @@ export class AllomoneySankeyDiagram {
   private commitNodeEdit(edit: NodeEditDraft): void {
     const data = this.dataSource();
     if (!data) {
-      this.editState.set(null);
+      this.closeEdit();
       return;
     }
 
@@ -818,7 +1201,7 @@ export class AllomoneySankeyDiagram {
       if (raw.length > 0) {
         const parsed = Number(raw);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          this.editState.set({ ...edit, error: 'Value must be a positive number.' });
+          this.editState.set({ ...edit, error: 'Value must be a positive number or empty.', errorField: 'value' });
           return;
         }
         nextValue = parsed;
@@ -843,7 +1226,7 @@ export class AllomoneySankeyDiagram {
     });
 
     this.dataSource.set({ ...data, nodes });
-    this.editState.set(null);
+    this.closeEdit();
   }
 
   /**
@@ -855,26 +1238,7 @@ export class AllomoneySankeyDiagram {
   private commitLinkEdit(edit: LinkEditDraft): void {
     const data = this.dataSource();
     if (!data) {
-      this.editState.set(null);
-      return;
-    }
-    const nodeIds = new Set(this.layout()?.nodes.filter((n) => !n.ghost).map((n) => n.id));
-
-    // Selects only offer existing node ids, but re-validate defensively.
-    const nextSource = this.canEditLinkSource()
-      ? Number(this.sourceSelectRef()?.nativeElement.value)
-      : edit.source;
-    const nextTarget = this.canEditLinkTarget()
-      ? Number(this.targetSelectRef()?.nativeElement.value)
-      : edit.target;
-
-    // Business rule 2: source and target must be existing, distinct nodes.
-    if (!nodeIds.has(nextSource) || !nodeIds.has(nextTarget)) {
-      this.editState.set({ ...edit, error: 'Source and target must be existing nodes.' });
-      return;
-    }
-    if (nextSource === nextTarget) {
-      this.editState.set({ ...edit, error: 'Source and target must be different.' });
+      this.closeEdit();
       return;
     }
 
@@ -882,20 +1246,9 @@ export class AllomoneySankeyDiagram {
     // value field is suppressed in the overlay.
     const editValue = this.canEditLinkValue() && !edit.aggregated;
 
-    // Business rule 2: value must be a positive number (required for a link).
-    let nextValue = NaN;
-    if (editValue) {
-      const raw = (this.linkValueInputRef()?.nativeElement.value ?? '').trim();
-      nextValue = Number(raw);
-      if (!Number.isFinite(nextValue) || nextValue <= 0) {
-        this.editState.set({ ...edit, error: 'Value must be a positive number.' });
-        return;
-      }
-    }
-
     // An aggregate stands in for every parallel link between its two nodes, so a
-    // source/target change is applied to all of them; a plain link rewrites only
-    // the exact entry that was opened (by its position in the data).
+    // source/target change — or a clear — is applied to all of them; a plain link
+    // affects only the exact entry that was opened (by its position in the data).
     const targets = edit.aggregated
       ? new Set(
           this.validation()
@@ -903,6 +1256,44 @@ export class AllomoneySankeyDiagram {
             .map((l) => l.index),
         )
       : new Set([edit.index]);
+
+    // Business rule 2: a link's value may be a positive number or empty. A link
+    // needs a positive value to be drawn (see validateSankeyData), so emptying the
+    // field clears the flow — the link is removed rather than written un-drawable.
+    const rawValue = editValue ? (this.linkValueInputRef()?.nativeElement.value ?? '').trim() : '';
+    if (editValue && rawValue.length === 0) {
+      this.dataSource.set({ ...data, links: data.links.filter((_, i) => !targets.has(i)) });
+      this.closeEdit();
+      return;
+    }
+
+    const nodeIds = new Set(this.layout()?.nodes.filter((n) => !n.ghost).map((n) => n.id));
+
+    // The listboxes keep `edit.source`/`edit.target` current as the user picks, so
+    // read the draft directly. The listboxes only offer existing node ids, but
+    // re-validate defensively below.
+    const nextSource = edit.source;
+    const nextTarget = edit.target;
+
+    // Business rule 2: source and target must be existing, distinct nodes.
+    if (!nodeIds.has(nextSource) || !nodeIds.has(nextTarget)) {
+      this.editState.set({ ...edit, error: 'Source and target must be existing nodes.', errorField: 'endpoints' });
+      return;
+    }
+    if (nextSource === nextTarget) {
+      this.editState.set({ ...edit, error: 'Source and target must be different.', errorField: 'endpoints' });
+      return;
+    }
+
+    // A non-empty value must parse to a positive number.
+    let nextValue = NaN;
+    if (editValue) {
+      nextValue = Number(rawValue);
+      if (!Number.isFinite(nextValue) || nextValue <= 0) {
+        this.editState.set({ ...edit, error: 'Value must be a positive number or empty.', errorField: 'value' });
+        return;
+      }
+    }
 
     const links = data.links.map((link, i) => {
       if (!link || !targets.has(i)) return link;
@@ -915,12 +1306,12 @@ export class AllomoneySankeyDiagram {
     });
 
     this.dataSource.set({ ...data, links });
-    this.editState.set(null);
+    this.closeEdit();
   }
 
   /** Discards the edit and closes the overlay (UC-3/UC-4 extension 3.a.1.a: Esc/Cancel). */
   protected cancelEdit(): void {
-    this.editState.set(null);
+    this.closeEdit();
   }
 
   /**
@@ -953,19 +1344,26 @@ export class AllomoneySankeyDiagram {
     });
 
     // Move keyboard focus into the overlay when an edit opens, so keyboard users
-    // land in the first editable control (UC-3/UC-4 accessibility).
+    // land in the first editable control (UC-3/UC-4 accessibility). The overlay —
+    // and its view-child controls — are created by an `@if` and only exist after
+    // the next render, so the focus is deferred to the post-render phase via
+    // `afterNextRender`; a microtask could run before the `@if` materializes the
+    // inputs, leaving every ref `undefined` and the focus never landing.
     effect(() => {
       if (this.editKey() === null) return;
-      queueMicrotask(() => {
-        const el =
-          this.nameInputRef()?.nativeElement ??
-          this.valueInputRef()?.nativeElement ??
-          this.sourceSelectRef()?.nativeElement ??
-          this.targetSelectRef()?.nativeElement ??
-          this.linkValueInputRef()?.nativeElement;
-        el?.focus();
-        if (el instanceof HTMLInputElement) el.select();
-      });
+      afterNextRender(
+        () => {
+          const el =
+            this.nameInputRef()?.nativeElement ??
+            this.valueInputRef()?.nativeElement ??
+            this.sourceComboRef()?.nativeElement ??
+            this.targetComboRef()?.nativeElement ??
+            this.linkValueInputRef()?.nativeElement;
+          el?.focus();
+          if (el instanceof HTMLInputElement) el.select();
+        },
+        { injector: this.injector },
+      );
     });
   }
 }

@@ -124,6 +124,13 @@ export interface SankeyOptions {
    */
   readonly noDataMessage?: string;
   /**
+   * Maximum number of characters of a node's name to display in the diagram.
+   * Defaults to `17`. A name within the limit is shown in full; a longer name is
+   * truncated to this many characters followed by an ellipsis (`…`). The full,
+   * untruncated name is still exposed to assistive technology.
+   */
+  readonly maxDisplayedNodeName?: number;
+  /**
    * When `true` (the default), several links between the same two nodes are
    * merged into a single ribbon whose value is their sum; the derived value of
    * such an aggregate cannot be edited in place. When `false`, every link is

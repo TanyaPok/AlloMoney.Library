@@ -76,6 +76,7 @@ export function validateSankeyData(
 
     const validNodes: ValidNode[] = [];
     const seenIds = new Set<number>();
+    let hasDuplicateIds = false;
 
     for (const node of data.nodes) {
         if (node == null) {
@@ -91,7 +92,11 @@ export function validateSankeyData(
             continue;
         }
         if (seenIds.has(node.id)) {
-            errors.push(`Skipped node ${node.id}: duplicate id.`);
+            hasDuplicateIds = true;
+            errors.push(
+                `Nodes must not contain duplicate ids (duplicate id ${node.id}). ` +
+                `Treating the data source as empty (no data).`,
+            );
             continue;
         }
 
@@ -106,6 +111,13 @@ export function validateSankeyData(
             value: node.value != null ? node.value : null,
             ...(node.color != null ? {color: node.color} : {}),
         });
+    }
+
+    // Duplicate node ids break node→link referencing, so the whole payload is
+    // rejected: it is treated exactly as a null/empty data source (the themed
+    // placeholder is shown) while the message above explains why.
+    if (hasDuplicateIds) {
+        return {isEmptyState: true, nodes: [], links: [], errors};
     }
 
     // show the placeholder if all nodes are invalid.

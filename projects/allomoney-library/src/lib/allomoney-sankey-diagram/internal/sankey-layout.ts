@@ -107,6 +107,21 @@ export interface LayoutOptions {
    * Should be at least the value label's line height.
    */
   readonly minLabelGap: number;
+  /**
+   * Font size (user units) used only to ESTIMATE on-diagram name widths when
+   * deciding how many characters fit before a vertical-orientation label would
+   * overlap its neighbour. Should track the rendered `--allomoney-label-size`; an
+   * off estimate merely shifts how aggressively long names truncate, never
+   * correctness.
+   */
+  readonly labelFontSize: number;
+  /**
+   * The most characters of a node name the diagram will display (matching the
+   * component's `maxDisplayedNodeName`). In vertical orientation the gap between
+   * adjacent nodes is widened to fit names up to this length, so a name shown on
+   * the diagram never overlaps its neighbour.
+   */
+  readonly maxDisplayedNodeName: number;
 }
 
 export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
@@ -125,6 +140,8 @@ export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   // clear block rather than a thin line.
   minThickness: 24,
   minLabelGap: 18,
+  labelFontSize: 12,
+  maxDisplayedNodeName: 17,
 };
 
 /**
@@ -356,7 +373,7 @@ export function computeSankeyLayout(
 ): SankeyLayout {
   const vertical = orientation === 'vertical';
   const format = makeValueFormatter(currency);
-  const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minColumnGap, minThickness, minLabelGap } = options;
+  const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minColumnGap, minThickness, minLabelGap, labelFontSize, maxDisplayedNodeName } = options;
 
   // Several links between the same two nodes are shown as one aggregate ribbon
   // (their summed value) unless aggregation is turned off, in which case every
@@ -556,32 +573,64 @@ export function computeSankeyLayout(
       ? marginLeft + (effectiveInnerWidth - nodeWidth) / 2
       : marginLeft + (rank / maxRank) * (effectiveInnerWidth - nodeWidth);
 
-  // --- 5. Vertical position (stack + vertically center each column) ------
-  // Size every node first and record the room each column needs: its stacked
-  // heights plus the inter-node padding. A node is never drawn thinner than
-  // minThickness, so a crowded column can need more than the requested inner
-  // height; when it does, the canvas grows on the cross axis to the tallest
-  // column so the stack never spills past the viewBox and gets clipped.
-  const columnHeights = columns.map((column) => {
-    let stacked = 0;
-    for (const w of column) {
-      w.height = Math.max(w.magnitude * scale, minThickness);
-      stacked += w.height;
-    }
-    return stacked + Math.max(0, column.length - 1) * nodePadding;
+  // --- 5. Vertical position (stack + distribute each column) -------------
+  // Size every node first. A node is never drawn thinner than minThickness.
+  for (const w of work) w.height = Math.max(w.magnitude * scale, minThickness);
+
+  // The minimum gap each consecutive pair in a column needs. Nodes must never
+  // overlap (>= nodePadding). In VERTICAL orientation each node's name is drawn
+  // centered ABOVE the node, so the gap also widens enough that the names of two
+  // adjacent nodes (each up to maxDisplayedNodeName chars, estimated from the
+  // label font size) do not overlap — rather than shrinking the names to fit a
+  // fixed gap. In horizontal orientation names sit to the left and stack, so
+  // they never collide this way and the gap is just nodePadding. Columns are in
+  // placement (input) order, which is top-to-bottom order.
+  const avgCharWidth = labelFontSize * 0.62; // rough proportional-font estimate
+  const labelPad = labelFontSize; // breathing room between two adjacent names
+  const estLabelWidth = (label: string): number =>
+    Math.min(label.length, maxDisplayedNodeName) * avgCharWidth;
+  const requiredGap = (a: WorkNode, b: WorkNode): number => {
+    if (!vertical) return nodePadding;
+    // centre-to-centre must clear both half-labels + padding; the gap is that
+    // minus the two half-heights already between the centres.
+    const forLabels =
+      (estLabelWidth(a.node.label) + estLabelWidth(b.node.label)) / 2 +
+      labelPad -
+      (a.height + b.height) / 2;
+    return Math.max(nodePadding, forLabels);
+  };
+
+  const columnGaps = columns.map((column) => {
+    const gaps: number[] = [];
+    for (let i = 1; i < column.length; i++) gaps.push(requiredGap(column[i - 1], column[i]));
+    return gaps;
+  });
+  const columnHeights = columns.map((column, i) => {
+    const stacked = column.reduce((sum, w) => sum + w.height, 0);
+    return stacked + columnGaps[i].reduce((sum, g) => sum + g, 0);
   });
   const requiredInnerHeight = columnHeights.reduce((max, h) => Math.max(max, h), 0);
   const effectiveInnerHeight = Math.max(innerHeight, requiredInnerHeight);
   const effectiveHeight = marginTop + effectiveInnerHeight + marginBottom;
 
   for (let i = 0; i < columns.length; i++) {
-    // Center each column in the (possibly grown) inner height; the tallest
-    // starts flush at marginTop, shorter ones center in the leftover space.
-    let cursor = marginTop + (effectiveInnerHeight - columnHeights[i]) / 2;
-    for (const w of columns[i]) {
+    const column = columns[i];
+    const gaps = columnGaps[i];
+    // Distribute the column's nodes across the FULL inner height so they occupy
+    // all the available cross-axis space instead of clustering in a centered
+    // block. Each pair keeps at least its required gap (above); any leftover
+    // space is shared equally on top of those gaps (space-between: first node
+    // flush at the top edge, last flush at the bottom). A lone node is centered.
+    const stacked = column.reduce((sum, w) => sum + w.height, 0);
+    const gapSum = gaps.reduce((sum, g) => sum + g, 0);
+    const extra = Math.max(0, effectiveInnerHeight - stacked - gapSum);
+    const extraPer = gaps.length > 0 ? extra / gaps.length : 0;
+    let cursor = gaps.length > 0 ? marginTop : marginTop + extra / 2;
+    for (let k = 0; k < column.length; k++) {
+      const w = column[k];
       w.x = columnX(w.rank);
       w.y = cursor;
-      cursor += w.height + nodePadding;
+      cursor += w.height + (k < gaps.length ? gaps[k] + extraPer : 0);
     }
   }
 

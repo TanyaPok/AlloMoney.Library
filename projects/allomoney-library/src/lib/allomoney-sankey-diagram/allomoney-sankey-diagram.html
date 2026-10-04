@@ -37,6 +37,7 @@
                       [style.--allomoney-selected-color]="link.color"
                       (pointerenter)="onHoverLink(link, $event)"
                       (pointerleave)="onLeave()"
+                      (focus)="onFocusLink(link.id)"
                       (click)="toggleSelectLink(link, $event)"
                       (dblclick)="startLinkEdit(link)"
                       (keydown.enter)="startLinkEdit(link)"
@@ -61,6 +62,7 @@
                    [attr.aria-label]="editingEnabled() && !node.ghost ? node.editLabel : null"
                    (pointerenter)="onHoverNode(node.id, $event)"
                    (pointerleave)="onLeave()"
+                   (focus)="onFocusNode(node.id)"
                    (click)="toggleSelectNode(node.id, $event)"
                    (dblclick)="startEdit(node.id)"
                    (keydown.enter)="startEdit(node.id)"
@@ -82,7 +84,7 @@
                           [attr.y]="node.labelY"
                           [attr.text-anchor]="node.labelAnchor"
                           dominant-baseline="middle">
-                        {{ node.label }}
+                        {{ node.displayLabel }}
                     </text>
                 </g>
             }
@@ -139,7 +141,7 @@
                                    type="text"
                                    inputmode="decimal"
                                    [value]="edit.seedValue"
-                                   [attr.aria-invalid]="edit.error ? true : null"/>
+                                   [attr.aria-invalid]="edit.errorField === 'value' ? true : null"/>
                         </label>
                     }
                     @if (edit.error) {
@@ -161,39 +163,109 @@
             </foreignObject>
         }
 
-        <!-- Link edit overlay (UC-4): value <input> plus source/target <select>s
-             populated from the existing nodes. Same commit/cancel semantics as
-             the node overlay. -->
+        <!-- Link edit overlay (UC-4): value <input> plus source/target comboboxes
+             populated from the existing nodes. Native <select> options cannot
+             wrap, so these are custom ARIA select-only comboboxes: a collapsed
+             trigger showing the current (maxDisplayedNodeName-truncated) selection,
+             opening a listbox popup whose options wrap onto multiple lines. Same
+             commit/cancel semantics as the node overlay. -->
         @if (linkEditView(); as edit) {
             <foreignObject [attr.x]="edit.x"
                            [attr.y]="edit.y"
                            [attr.width]="edit.width"
                            [attr.height]="edit.height">
                 <div class="allomoney-sankey__edit"
+                     [class.allomoney-sankey__edit--drop-up]="edit.dropUp"
                      role="dialog"
                      aria-label="Edit flow"
                      (keydown.enter)="commitEdit()"
                      (keydown.escape)="cancelEdit()"
                      (focusout)="onEditFocusOut($event)">
                     @if (canEditLinkSource()) {
-                        <label class="allomoney-sankey__edit-field">
+                        <div class="allomoney-sankey__edit-field">
                             <span class="allomoney-sankey__edit-label">Source</span>
-                            <select #sourceSelect class="allomoney-sankey__edit-input">
-                                @for (opt of edit.nodes; track opt.id) {
-                                    <option [value]="opt.id" [selected]="opt.id === edit.source">{{ opt.label }}</option>
+                            <div class="allomoney-sankey__combobox"
+                                 (focusout)="onComboFocusOut($event, 'source')">
+                                <div #sourceCombo
+                                     class="allomoney-sankey__edit-input allomoney-sankey__combobox-trigger"
+                                     role="combobox"
+                                     tabindex="0"
+                                     aria-label="Source"
+                                     aria-haspopup="listbox"
+                                     [attr.aria-invalid]="edit.errorField === 'endpoints' ? true : null"
+                                     [attr.aria-controls]="edit.sourceOpen ? sourceListId : null"
+                                     [attr.aria-expanded]="edit.sourceOpen"
+                                     [attr.aria-activedescendant]="edit.sourceOpen ? edit.sourceActiveId : null"
+                                     (click)="toggleCombo('source')"
+                                     (keydown)="onComboKeydown($event, 'source')">
+                                    <span class="allomoney-sankey__combobox-value">{{ edit.sourceLabel }}</span>
+                                    <span class="allomoney-sankey__combobox-arrow" aria-hidden="true"></span>
+                                </div>
+                                @if (edit.sourceOpen) {
+                                    <div #sourceListbox
+                                         class="allomoney-sankey__listbox allomoney-sankey__combobox-popup"
+                                         [class.allomoney-sankey__combobox-popup--up]="edit.dropUp"
+                                         role="listbox"
+                                         [id]="sourceListId"
+                                         aria-label="Source">
+                                        @for (opt of edit.sourceOptions; track opt.id) {
+                                            <div class="allomoney-sankey__option"
+                                                 [class.allomoney-sankey__option--selected]="opt.selected"
+                                                 role="option"
+                                                 [id]="opt.optionId"
+                                                 [attr.aria-selected]="opt.selected"
+                                                 (mousedown)="$event.preventDefault()"
+                                                 (click)="chooseSource(opt.id)">
+                                                {{ opt.label }}
+                                            </div>
+                                        }
+                                    </div>
                                 }
-                            </select>
-                        </label>
+                            </div>
+                        </div>
                     }
                     @if (canEditLinkTarget()) {
-                        <label class="allomoney-sankey__edit-field">
+                        <div class="allomoney-sankey__edit-field">
                             <span class="allomoney-sankey__edit-label">Target</span>
-                            <select #targetSelect class="allomoney-sankey__edit-input">
-                                @for (opt of edit.nodes; track opt.id) {
-                                    <option [value]="opt.id" [selected]="opt.id === edit.target">{{ opt.label }}</option>
+                            <div class="allomoney-sankey__combobox"
+                                 (focusout)="onComboFocusOut($event, 'target')">
+                                <div #targetCombo
+                                     class="allomoney-sankey__edit-input allomoney-sankey__combobox-trigger"
+                                     role="combobox"
+                                     tabindex="0"
+                                     aria-label="Target"
+                                     aria-haspopup="listbox"
+                                     [attr.aria-invalid]="edit.errorField === 'endpoints' ? true : null"
+                                     [attr.aria-controls]="edit.targetOpen ? targetListId : null"
+                                     [attr.aria-expanded]="edit.targetOpen"
+                                     [attr.aria-activedescendant]="edit.targetOpen ? edit.targetActiveId : null"
+                                     (click)="toggleCombo('target')"
+                                     (keydown)="onComboKeydown($event, 'target')">
+                                    <span class="allomoney-sankey__combobox-value">{{ edit.targetLabel }}</span>
+                                    <span class="allomoney-sankey__combobox-arrow" aria-hidden="true"></span>
+                                </div>
+                                @if (edit.targetOpen) {
+                                    <div #targetListbox
+                                         class="allomoney-sankey__listbox allomoney-sankey__combobox-popup"
+                                         [class.allomoney-sankey__combobox-popup--up]="edit.dropUp"
+                                         role="listbox"
+                                         [id]="targetListId"
+                                         aria-label="Target">
+                                        @for (opt of edit.targetOptions; track opt.id) {
+                                            <div class="allomoney-sankey__option"
+                                                 [class.allomoney-sankey__option--selected]="opt.selected"
+                                                 role="option"
+                                                 [id]="opt.optionId"
+                                                 [attr.aria-selected]="opt.selected"
+                                                 (mousedown)="$event.preventDefault()"
+                                                 (click)="chooseTarget(opt.id)">
+                                                {{ opt.label }}
+                                            </div>
+                                        }
+                                    </div>
                                 }
-                            </select>
-                        </label>
+                            </div>
+                        </div>
                     }
                     @if (linkValueEditable()) {
                         <label class="allomoney-sankey__edit-field">
@@ -203,7 +275,7 @@
                                    type="text"
                                    inputmode="decimal"
                                    [value]="edit.seedValue"
-                                   [attr.aria-invalid]="edit.error ? true : null"/>
+                                   [attr.aria-invalid]="edit.errorField === 'value' ? true : null"/>
                         </label>
                     }
                     @if (edit.error) {
