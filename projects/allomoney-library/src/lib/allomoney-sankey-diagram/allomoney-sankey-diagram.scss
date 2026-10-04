@@ -406,6 +406,14 @@
   border: 1px solid var(--allomoney-node-stroke);
 }
 
+// A ghost duplicate's swatch mirrors the diagram's ghost node: no fill, a dashed
+// outline in the node's own colour (bound inline as border-color).
+.allomoney-sankey__legend-swatch--ghost {
+  background: transparent;
+  border-style: dashed;
+  border-width: 1.5px;
+}
+
 .allomoney-sankey__legend-totals {
   display: inline-flex;
   flex-wrap: wrap;

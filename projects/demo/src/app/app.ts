@@ -60,9 +60,9 @@ export class App {
     options: SankeyOptions = {
         theme: "light",
         noDataMessage: "No Money Flow Data",
-        width: 1200,
-        height: 400,
-        orientation: "vertical",
+        //width: 1200,
+        //height: 400,
+        orientation: "horizontal",
         horizontalScrolling: true,
         verticalScrolling: true,
         canEditNodeName: true,
@@ -76,9 +76,9 @@ export class App {
         legend: {
             visibility: true,
             location: 'bottom',
-            isFullLegendShown: true,
-            inLabel: 'Deposit',
-            outLabel: 'Withdrawal',
+            isFullLegendShown: false,
+            inLabel: "",
+            outLabel: "",
         },
     };
 }

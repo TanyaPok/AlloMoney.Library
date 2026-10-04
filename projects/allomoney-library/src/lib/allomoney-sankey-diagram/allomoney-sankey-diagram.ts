@@ -200,6 +200,19 @@ interface LinkEditView extends EditBox {
   readonly targetActiveId: string;
 }
 
+/** One colour swatch in a legend row. */
+interface LegendSwatch {
+  /** The node's colour. */
+  readonly color: string;
+  /**
+   * `true` when this swatch stands for a ghost duplicate (a node redrawn by a
+   * circular link). Rendered as a dashed, fill-less outline in {@link color} to
+   * match how the ghost is drawn in the diagram; the first (real) swatch is a
+   * solid fill.
+   */
+  readonly ghost: boolean;
+}
+
 /** One node's row in the legend (UC-5). */
 interface LegendEntry {
   /** {@link SankeyNode.id} — stable key for `@for` tracking. */
@@ -209,11 +222,12 @@ interface LegendEntry {
   /** The full, untruncated name for the item's `title`/tooltip. */
   readonly title: string;
   /**
-   * One colour per time this node appears in the diagram: its own swatch plus one
-   * for each ghost duplicate created by a circular link (UC-5 business rule 3).
-   * Every entry is the node's colour, so a repeated node shows several swatches.
+   * One swatch per time this node appears in the diagram: a solid swatch for the
+   * node itself plus a dashed, outline swatch for each ghost duplicate created by
+   * a circular link (UC-5 business rule 3), so a repeated node reads the same way
+   * in the legend as on the diagram.
    */
-  readonly swatches: readonly string[];
+  readonly swatches: readonly LegendSwatch[];
   /** Formatted total incoming sum ("deposit"); shown only in the full legend. */
   readonly inTotal: string;
   /** Formatted total outgoing sum ("withdrawal"); shown only in the full legend. */
@@ -727,14 +741,22 @@ export class AllomoneySankeyDiagram {
 
     const entries: LegendEntry[] = view.nodes
       .filter((node) => !node.ghost)
-      .map((node) => ({
-        id: node.id,
-        label: this.truncateName(node.label, max),
-        title: node.label,
-        swatches: Array.from({ length: 1 + (appearances.get(node.id) ?? 0) }, () => node.color),
-        inTotal: format(inflow.get(node.id) ?? 0),
-        outTotal: format(outflow.get(node.id) ?? 0),
-      }));
+      .map((node) => {
+        const ghosts = appearances.get(node.id) ?? 0;
+        // Real node first (solid), then one dashed outline swatch per ghost copy.
+        const swatches: LegendSwatch[] = [
+          { color: node.color, ghost: false },
+          ...Array.from({ length: ghosts }, () => ({ color: node.color, ghost: true })),
+        ];
+        return {
+          id: node.id,
+          label: this.truncateName(node.label, max),
+          title: node.label,
+          swatches,
+          inTotal: format(inflow.get(node.id) ?? 0),
+          outTotal: format(outflow.get(node.id) ?? 0),
+        };
+      });
 
     return {
       location: legend.location,
