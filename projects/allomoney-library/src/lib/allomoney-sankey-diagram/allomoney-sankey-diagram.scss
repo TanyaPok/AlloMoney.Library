@@ -13,6 +13,8 @@
   --allomoney-label-size: 12px;
   // Empty-state ("no data") message size.
   --allomoney-message-size: 14px;
+  // Legend (UC-5) text size.
+  --allomoney-legend-size: 12px;
   // Shared label weight/tracking applied to the diagram text and message.
   --allomoney-label-weight: 500;
   --allomoney-label-tracking: 0.6px;
@@ -127,15 +129,45 @@
   background-image: url('./assets/sankey-empty-dark.svg');
 }
 
-// --- Diagram -------------------------------------------------------------
-// Scroll viewport for the canvas. By default both axes may scroll so the diagram
-// can stay at its natural (1:1) size and remain legible; turning an axis off
-// (host modifiers below) contains that axis instead — the canvas is scaled down
-// to fit and the scrollbar is hidden.
-.allomoney-sankey__scroll {
+// --- Diagram + legend layout (UC-5) --------------------------------------
+// Flex box that holds the scrolling diagram and, optionally, the legend. It
+// fills the host; the diagram flexes to take the remaining space and the legend
+// keeps its natural size on the side given by legend.location. `order` (not DOM
+// position) puts a top/left legend before the diagram, so the DOM/reading order
+// stays diagram-first for assistive tech.
+.allomoney-sankey__layout {
+  display: flex;
+  flex-direction: column;
   inline-size: 100%;
   block-size: 100%;
   min-block-size: 200px;
+}
+
+.allomoney-sankey__layout--top,
+.allomoney-sankey__layout--bottom {
+  flex-direction: column;
+}
+
+.allomoney-sankey__layout--left,
+.allomoney-sankey__layout--right {
+  flex-direction: row;
+}
+
+.allomoney-sankey__layout--top .allomoney-sankey__legend,
+.allomoney-sankey__layout--left .allomoney-sankey__legend {
+  order: -1;
+}
+
+// Scroll viewport for the canvas. By default both axes may scroll so the diagram
+// can stay at its natural (1:1) size and remain legible; turning an axis off
+// (host modifiers below) contains that axis instead — the canvas is scaled down
+// to fit and the scrollbar is hidden. As a flex child it takes the space the
+// legend leaves; the `min-*: 0` lets it shrink below its content so it scrolls
+// rather than pushing the legend out.
+.allomoney-sankey__scroll {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
   overflow: auto;
 }
 
@@ -309,6 +341,112 @@
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// --- Legend (UC-5) -------------------------------------------------------
+// Part of the component (inside the scrolling layout, not floating). Compact
+// mode is a wrapping row of swatch + name chips; the full mode adds each node's
+// in/out totals. Colours come from the theme tokens, so text meets WCAG AA in
+// both themes and the swatch borders stay visible.
+.allomoney-sankey__legend {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px 16px;
+  padding: 8px 12px;
+  font-family: var(--allomoney-label-font);
+  font-size: var(--allomoney-legend-size);
+  font-weight: var(--allomoney-label-weight);
+  letter-spacing: var(--allomoney-label-tracking);
+  color: var(--allomoney-label-color);
+}
+
+// Top/bottom legend: a wrapping row. Cap its height so a graph with many nodes
+// keeps the diagram visible — the legend then scrolls within the component.
+.allomoney-sankey__legend:not(.allomoney-sankey__legend--vertical) {
+  max-block-size: 35%;
+  overflow: auto;
+}
+
+// Left/right legend: a single scrolling column beside the diagram.
+.allomoney-sankey__legend--vertical {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 8px;
+  max-inline-size: 240px;
+  overflow: auto;
+}
+
+.allomoney-sankey__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+// Full legend rows carry totals too, so let their content wrap instead of
+// forcing one long line.
+.allomoney-sankey__legend--full .allomoney-sankey__legend-item {
+  white-space: normal;
+}
+
+// Swatch(es) + node name always stay together on one line, whether or not the
+// totals follow.
+.allomoney-sankey__legend-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+// Left/right (vertical) full legend: stack each node's totals UNDER its name,
+// indented to line up past the swatch, so a node reads as a compact little block
+// (name on top, Deposit / Withdrawal beneath) instead of one long wrapping line.
+.allomoney-sankey__legend--vertical.allomoney-sankey__legend--full .allomoney-sankey__legend-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.allomoney-sankey__legend--vertical.allomoney-sankey__legend--full .allomoney-sankey__legend-totals {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 1px;
+  // Align the totals under the name (past the 12px swatch + 6px gap).
+  padding-inline-start: 18px;
+}
+
+.allomoney-sankey__legend-swatches {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.allomoney-sankey__legend-swatch {
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--allomoney-node-stroke);
+}
+
+// A ghost duplicate's swatch mirrors the diagram's ghost node: no fill, a dashed
+// outline in the node's own colour (bound inline as border-color).
+.allomoney-sankey__legend-swatch--ghost {
+  background: transparent;
+  border-style: dashed;
+  border-width: 1.5px;
+}
+
+.allomoney-sankey__legend-totals {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  color: var(--allomoney-tooltip-muted);
+}
+
+.allomoney-sankey__legend-total {
   white-space: nowrap;
 }
 
