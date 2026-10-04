@@ -322,18 +322,22 @@
                 <div class="allomoney-sankey__legend-item"
                      role="listitem"
                      [attr.title]="entry.title">
-                    <span class="allomoney-sankey__legend-swatches" aria-hidden="true">
-                        @for (swatch of entry.swatches; track $index) {
-                            <!-- Real node: solid fill. Ghost duplicate: dashed,
-                                 fill-less outline in the node colour, like the diagram. -->
-                            <span class="allomoney-sankey__legend-swatch"
-                                  [class.allomoney-sankey__legend-swatch--ghost]="swatch.ghost"
-                                  [style.background]="swatch.ghost ? null : swatch.color"
-                                  [style.border-color]="swatch.ghost ? swatch.color : null"></span>
-                        }
+                    <span class="allomoney-sankey__legend-head">
+                        <span class="allomoney-sankey__legend-swatches" aria-hidden="true">
+                            @for (swatch of entry.swatches; track $index) {
+                                <!-- Real node: solid fill. Ghost duplicate: dashed,
+                                     fill-less outline in the node colour, like the diagram. -->
+                                <span class="allomoney-sankey__legend-swatch"
+                                      [class.allomoney-sankey__legend-swatch--ghost]="swatch.ghost"
+                                      [style.background]="swatch.ghost ? null : swatch.color"
+                                      [style.border-color]="swatch.ghost ? swatch.color : null"></span>
+                            }
+                        </span>
+                        <span class="allomoney-sankey__legend-name">{{ entry.label }}</span>
                     </span>
-                    <span class="allomoney-sankey__legend-name">{{ entry.label }}</span>
                     @if (legend.isFull) {
+                        <!-- In a left/right (vertical) legend these totals drop under
+                             the node name; in a top/bottom legend they sit inline. -->
                         <span class="allomoney-sankey__legend-totals">
                             <span class="allomoney-sankey__legend-total">{{ legend.inLabel }}: {{ entry.inTotal }}</span>
                             <span class="allomoney-sankey__legend-total">{{ legend.outLabel }}: {{ entry.outTotal }}</span>

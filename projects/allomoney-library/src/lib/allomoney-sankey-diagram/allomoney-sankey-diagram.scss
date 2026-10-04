@@ -393,6 +393,31 @@
   white-space: normal;
 }
 
+// Swatch(es) + node name always stay together on one line, whether or not the
+// totals follow.
+.allomoney-sankey__legend-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+// Left/right (vertical) full legend: stack each node's totals UNDER its name,
+// indented to line up past the swatch, so a node reads as a compact little block
+// (name on top, Deposit / Withdrawal beneath) instead of one long wrapping line.
+.allomoney-sankey__legend--vertical.allomoney-sankey__legend--full .allomoney-sankey__legend-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.allomoney-sankey__legend--vertical.allomoney-sankey__legend--full .allomoney-sankey__legend-totals {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 1px;
+  // Align the totals under the name (past the 12px swatch + 6px gap).
+  padding-inline-start: 18px;
+}
+
 .allomoney-sankey__legend-swatches {
   display: inline-flex;
   flex: 0 0 auto;
