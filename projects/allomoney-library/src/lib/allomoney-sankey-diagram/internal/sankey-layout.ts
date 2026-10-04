@@ -556,7 +556,7 @@ export function computeSankeyLayout(
       ? marginLeft + (effectiveInnerWidth - nodeWidth) / 2
       : marginLeft + (rank / maxRank) * (effectiveInnerWidth - nodeWidth);
 
-  // --- 5. Vertical position (stack + vertically center each column) ------
+  // --- 5. Vertical position (stack + distribute each column) -------------
   // Size every node first and record the room each column needs: its stacked
   // heights plus the inter-node padding. A node is never drawn thinner than
   // minThickness, so a crowded column can need more than the requested inner
@@ -575,13 +575,27 @@ export function computeSankeyLayout(
   const effectiveHeight = marginTop + effectiveInnerHeight + marginBottom;
 
   for (let i = 0; i < columns.length; i++) {
-    // Center each column in the (possibly grown) inner height; the tallest
-    // starts flush at marginTop, shorter ones center in the leftover space.
-    let cursor = marginTop + (effectiveInnerHeight - columnHeights[i]) / 2;
-    for (const w of columns[i]) {
+    const column = columns[i];
+    // Distribute each column's nodes across the FULL inner height so they occupy
+    // all the available cross-axis space instead of clustering in a centered
+    // block (which left wide empty bands beside the shorter columns). The slack —
+    // inner height minus the stacked node heights — is shared equally as the gap
+    // between nodes (space-between: first node flush at the top edge, last flush
+    // at the bottom). A lone node has no gap to grow, so it is centered.
+    //
+    // The gap never falls below nodePadding: effectiveInnerHeight is at least the
+    // tallest column's stacked height plus its (n-1) paddings, so every column's
+    // slack/(n-1) is >= nodePadding and nodes can never overlap. The tallest
+    // column therefore still lands exactly at nodePadding, flush top to bottom.
+    const stacked = column.reduce((sum, w) => sum + w.height, 0);
+    const slack = Math.max(0, effectiveInnerHeight - stacked);
+    const gaps = column.length - 1;
+    let cursor = gaps > 0 ? marginTop : marginTop + slack / 2;
+    const gap = gaps > 0 ? slack / gaps : 0;
+    for (const w of column) {
       w.x = columnX(w.rank);
       w.y = cursor;
-      cursor += w.height + nodePadding;
+      cursor += w.height + gap;
     }
   }
 

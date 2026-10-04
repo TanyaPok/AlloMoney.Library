@@ -72,12 +72,12 @@ export class App {
         //theme: "dark",
         noDataMessage: "No Money Flow Data",
         //width: 200,
-        //height: 200,
+        height: 400,
 
-        //orientation: "vertical",
+        orientation: "vertical",
         //height: 1500
-        //horizontalScrolling: true,
-        //verticalScrolling: true,
+        horizontalScrolling: true,
+        verticalScrolling: true,
         canEditNodeName: true,
         canEditNodeValue: true,
         currency: 'USD',
