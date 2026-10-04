@@ -76,7 +76,7 @@ export class App {
         legend: {
             visibility: true,
             location: 'bottom',
-            isFullLegendShown: false,
+            isFullLegendShown: true,
             inLabel: "",
             outLabel: "",
         },

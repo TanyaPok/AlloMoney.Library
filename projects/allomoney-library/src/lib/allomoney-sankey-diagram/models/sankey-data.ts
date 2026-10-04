@@ -191,12 +191,14 @@ export interface SankeyLegend {
   readonly isFullLegendShown?: boolean;
   /**
    * Label for a node's total incoming sum in the full legend. Rendered as
-   * auto-escaped text (never as HTML). Defaults to `'Deposit'`.
+   * auto-escaped text (never as HTML). An empty or whitespace-only string is
+   * treated as unset and falls back to the default `'Deposit'`.
    */
   readonly inLabel?: string;
   /**
    * Label for a node's total outgoing sum in the full legend. Rendered as
-   * auto-escaped text (never as HTML). Defaults to `'Withdrawal'`.
+   * auto-escaped text (never as HTML). An empty or whitespace-only string is
+   * treated as unset and falls back to the default `'Withdrawal'`.
    */
   readonly outLabel?: string;
 }

@@ -87,19 +87,21 @@ export function resolveLegend(
       }
     }
 
+    // An empty or whitespace-only label is treated as "not provided" and keeps the
+    // default (extension 1.a/1.b); a non-string is invalid and logged.
     if (source.inLabel !== undefined) {
-      if (typeof source.inLabel === 'string') {
-        legend = { ...legend, inLabel: source.inLabel };
-      } else {
+      if (typeof source.inLabel !== 'string') {
         errors.push(`Ignored legend "inLabel": expected a string (${String(source.inLabel)}).`);
+      } else if (source.inLabel.trim().length > 0) {
+        legend = { ...legend, inLabel: source.inLabel };
       }
     }
 
     if (source.outLabel !== undefined) {
-      if (typeof source.outLabel === 'string') {
-        legend = { ...legend, outLabel: source.outLabel };
-      } else {
+      if (typeof source.outLabel !== 'string') {
         errors.push(`Ignored legend "outLabel": expected a string (${String(source.outLabel)}).`);
+      } else if (source.outLabel.trim().length > 0) {
+        legend = { ...legend, outLabel: source.outLabel };
       }
     }
   }
