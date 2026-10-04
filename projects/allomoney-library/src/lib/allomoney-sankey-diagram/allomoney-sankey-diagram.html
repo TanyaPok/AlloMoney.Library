@@ -7,6 +7,15 @@
     </div>
 } @else {
     @let view = layout()!;
+    @let legend = legendView();
+    <!-- Diagram + legend (UC-5). The legend is part of the component and sits on
+         the side given by legend.location; the whole layout fills the host and
+         scrolls together. -->
+    <div class="allomoney-sankey__layout"
+         [class.allomoney-sankey__layout--top]="legend?.location === 'top'"
+         [class.allomoney-sankey__layout--bottom]="legend?.location === 'bottom'"
+         [class.allomoney-sankey__layout--left]="legend?.location === 'left'"
+         [class.allomoney-sankey__layout--right]="legend?.location === 'right'">
     <div class="allomoney-sankey__scroll">
     <svg class="allomoney-sankey__canvas"
          [attr.viewBox]="'0 0 ' + view.width + ' ' + view.height"
@@ -297,6 +306,38 @@
             </foreignObject>
         }
     </svg>
+    </div>
+
+    <!-- Legend (UC-5). Compact: a colour swatch (one per node appearance) plus the
+         node name. Full: also each node's incoming/outgoing totals. The swatches
+         are decorative (the name carries the meaning as text), so colour never
+         conveys information alone. -->
+    @if (legend) {
+        <div class="allomoney-sankey__legend"
+             [class.allomoney-sankey__legend--full]="legend.isFull"
+             [class.allomoney-sankey__legend--vertical]="legend.location === 'left' || legend.location === 'right'"
+             role="list"
+             aria-label="Legend">
+            @for (entry of legend.entries; track entry.id) {
+                <div class="allomoney-sankey__legend-item"
+                     role="listitem"
+                     [attr.title]="entry.title">
+                    <span class="allomoney-sankey__legend-swatches" aria-hidden="true">
+                        @for (color of entry.swatches; track $index) {
+                            <span class="allomoney-sankey__legend-swatch" [style.background]="color"></span>
+                        }
+                    </span>
+                    <span class="allomoney-sankey__legend-name">{{ entry.label }}</span>
+                    @if (legend.isFull) {
+                        <span class="allomoney-sankey__legend-totals">
+                            <span class="allomoney-sankey__legend-total">{{ legend.inLabel }}: {{ entry.inTotal }}</span>
+                            <span class="allomoney-sankey__legend-total">{{ legend.outLabel }}: {{ entry.outTotal }}</span>
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+    }
     </div>
 
     <!-- Custom hover tooltip. Themed with the component (data-theme), it tracks

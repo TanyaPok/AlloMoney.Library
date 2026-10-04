@@ -17,6 +17,7 @@ import {
 import { ALLOMONEY_LIBRARY_CONFIG } from '../config/allomoney-library-config';
 import type {
   SankeyData,
+  SankeyLegend,
   SankeyOptions,
   SankeyOrientation,
   SankeyTheme,
@@ -31,6 +32,8 @@ import {
 import { collectChain, type Chain, type ChainSeed } from './internal/sankey-chain';
 import { validateSankeyData } from './internal/validate-sankey-data';
 import { resolveDimensions } from './internal/validate-dimensions';
+import { resolveLegend, type ResolvedSankeyLegend } from './internal/resolve-legend';
+import { makeValueFormatter } from './internal/format-value';
 
 /** A node paired with its current hover-dim state. */
 interface RenderNode extends LayoutNode {
@@ -197,6 +200,39 @@ interface LinkEditView extends EditBox {
   readonly targetActiveId: string;
 }
 
+/** One node's row in the legend (UC-5). */
+interface LegendEntry {
+  /** {@link SankeyNode.id} — stable key for `@for` tracking. */
+  readonly id: number;
+  /** Display name (truncated to {@link AllomoneySankeyDiagram.maxDisplayedNodeName}), or the id. */
+  readonly label: string;
+  /** The full, untruncated name for the item's `title`/tooltip. */
+  readonly title: string;
+  /**
+   * One colour per time this node appears in the diagram: its own swatch plus one
+   * for each ghost duplicate created by a circular link (UC-5 business rule 3).
+   * Every entry is the node's colour, so a repeated node shows several swatches.
+   */
+  readonly swatches: readonly string[];
+  /** Formatted total incoming sum ("deposit"); shown only in the full legend. */
+  readonly inTotal: string;
+  /** Formatted total outgoing sum ("withdrawal"); shown only in the full legend. */
+  readonly outTotal: string;
+}
+
+/** The placed legend (UC-5), or `null` when it is hidden or there is no diagram. */
+interface LegendView {
+  readonly location: ResolvedSankeyLegend['location'];
+  /** `true` when per-node in/out totals are shown (business rule 3). */
+  readonly isFull: boolean;
+  /** Label for the incoming total (e.g. `"Deposit"`). */
+  readonly inLabel: string;
+  /** Label for the outgoing total (e.g. `"Withdrawal"`). */
+  readonly outLabel: string;
+  /** One row per real (non-ghost) node, in diagram order. */
+  readonly entries: readonly LegendEntry[];
+}
+
 /** Monotonic id source so each instance gets unique `aria` target ids. */
 let uidCounter = 0;
 
@@ -304,6 +340,8 @@ export class AllomoneySankeyDiagram {
     alias: 'maxDisplayedNodeName',
     transform: numberAttribute,
   });
+  /** Raw `[legend]` element input (see resolved {@link legend}). */
+  readonly legendInput = input<SankeyLegend | null | undefined>(undefined, { alias: 'legend' });
 
   /**
    * The resolved visual theme: {@link options}`.theme` when set, else the
@@ -357,6 +395,19 @@ export class AllomoneySankeyDiagram {
     const raw = this.options().maxDisplayedNodeName ?? this.maxDisplayedNodeNameInput();
     return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 17;
   });
+
+  /**
+   * The resolved legend configuration plus any validation errors (UC-5 business
+   * rules 1 and 2). The {@link options}`.legend` wins field by field over the
+   * `[legend]` input; an absent, `null` or `{}` legend yields the full defaults,
+   * and a partial legend fills only its missing fields. See {@link resolveLegend}.
+   */
+  private readonly legendResolution = computed(() =>
+    resolveLegend(this.legendInput(), this.options().legend),
+  );
+
+  /** The resolved legend configuration (see {@link legendResolution}). */
+  protected readonly legend = computed<ResolvedSankeyLegend>(() => this.legendResolution().legend);
 
   /**
    * Truncates a node name to the resolved {@link maxDisplayedNodeName} for
@@ -637,6 +688,61 @@ export class AllomoneySankeyDiagram {
     const nodeCount = layout.nodes.filter((n) => !n.ghost).length;
     const linkCount = layout.links.length;
     return `Sankey diagram with ${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'} and ${linkCount} ${linkCount === 1 ? 'flow' : 'flows'}.`;
+  });
+
+  /**
+   * The legend view-model, or `null` when the legend is hidden
+   * ({@link legend}`.visibility` is `false`) or there is no diagram to describe —
+   * the empty state shows the placeholder only (UC-5 initial condition: "at least
+   * one node"). One row per real node in diagram order; a node duplicated by a
+   * circular link contributes one swatch per appearance (business rule 3), and the
+   * full legend adds each node's total incoming/outgoing sums.
+   */
+  protected readonly legendView = computed<LegendView | null>(() => {
+    const legend = this.legend();
+    if (!legend.visibility) return null;
+    const view = this.layout();
+    if (!view) return null;
+
+    const format = makeValueFormatter(this.currency());
+    const max = this.maxDisplayedNodeName();
+
+    // In/out totals come from the validated consumer links (real source/target),
+    // so a returning flow counts toward its real node rather than its ghost.
+    const inflow = new Map<number, number>();
+    const outflow = new Map<number, number>();
+    for (const link of this.validation().links) {
+      inflow.set(link.target, (inflow.get(link.target) ?? 0) + link.value);
+      outflow.set(link.source, (outflow.get(link.source) ?? 0) + link.value);
+    }
+
+    // How many times each real node is drawn: once for itself plus one per ghost
+    // duplicate (a circular link redraws the node forward as a ghost).
+    const appearances = new Map<number, number>();
+    for (const node of view.nodes) {
+      if (node.ghost && node.ghostOf != null) {
+        appearances.set(node.ghostOf, (appearances.get(node.ghostOf) ?? 0) + 1);
+      }
+    }
+
+    const entries: LegendEntry[] = view.nodes
+      .filter((node) => !node.ghost)
+      .map((node) => ({
+        id: node.id,
+        label: this.truncateName(node.label, max),
+        title: node.label,
+        swatches: Array.from({ length: 1 + (appearances.get(node.id) ?? 0) }, () => node.color),
+        inTotal: format(inflow.get(node.id) ?? 0),
+        outTotal: format(outflow.get(node.id) ?? 0),
+      }));
+
+    return {
+      location: legend.location,
+      isFull: legend.isFullLegendShown,
+      inLabel: legend.inLabel,
+      outLabel: legend.outLabel,
+      entries,
+    };
   });
 
   /**
@@ -1339,6 +1445,14 @@ export class AllomoneySankeyDiagram {
     // display-distorting size fell back to the default (100% of the container).
     effect(() => {
       for (const message of this.dimensions().errors) {
+        console.error(`[allomoney-sankey-diagram] ${message}`);
+      }
+    });
+
+    // Log any rejected legend field so consumers see why it fell back to its
+    // default (UC-5 business rule 2 / minimal guarantee).
+    effect(() => {
+      for (const message of this.legendResolution().errors) {
         console.error(`[allomoney-sankey-diagram] ${message}`);
       }
     });

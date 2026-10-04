@@ -155,6 +155,50 @@ export interface SankeyOptions {
    * stay legible; `false` scales the diagram down to fit the available height.
    */
   readonly verticalScrolling?: boolean;
+  /**
+   * Legend configuration (UC-5). May be partial: any omitted field — or an
+   * omitted/`null`/`{}` legend altogether — falls back to its documented default
+   * (see {@link SankeyLegend}). When a legend is supplied both here and through
+   * the component's `[legend]` input, this one takes priority field by field.
+   */
+  readonly legend?: SankeyLegend | null;
+}
+
+/**
+ * Where the legend sits relative to the diagram: to its `'left'`, above it
+ * (`'top'`), to its `'right'`, or below it (`'bottom'`, the default).
+ */
+export type LegendLocation = 'left' | 'top' | 'right' | 'bottom';
+
+/**
+ * Legend configuration for {@link AllomoneySankeyDiagram} (UC-5). Every field is
+ * optional: an omitted field falls back to its default, so a partial legend such
+ * as `{ visibility: true }` is valid and the rest is filled in. Supply it either
+ * through the component's `[legend]` input or via {@link SankeyOptions.legend};
+ * when both are given, the `options` legend wins field by field.
+ */
+export interface SankeyLegend {
+  /** Whether the legend is shown at all. Defaults to `true`. */
+  readonly visibility?: boolean;
+  /** Where the legend sits relative to the diagram. Defaults to `'bottom'`. */
+  readonly location?: LegendLocation;
+  /**
+   * When `false` (the default) the legend shows only each node's colour
+   * swatch(es) and name (or id when the name is empty). When `true` it also shows
+   * each node's total incoming and outgoing sums, labelled by {@link inLabel} and
+   * {@link outLabel}.
+   */
+  readonly isFullLegendShown?: boolean;
+  /**
+   * Label for a node's total incoming sum in the full legend. Rendered as
+   * auto-escaped text (never as HTML). Defaults to `'Deposit'`.
+   */
+  readonly inLabel?: string;
+  /**
+   * Label for a node's total outgoing sum in the full legend. Rendered as
+   * auto-escaped text (never as HTML). Defaults to `'Withdrawal'`.
+   */
+  readonly outLabel?: string;
 }
 
 /**

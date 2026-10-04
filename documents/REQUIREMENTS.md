@@ -242,6 +242,8 @@ hovered element belongs.
 1.a  There is only one chain and no other elements. The use case is over.
 ```
 
+___
+
 ### UC-3: Edit Sankey Diagram Node
 **Scope:** `@projects/allomoney-library/src/lib/allomoney-sankey-diagram`
 
@@ -291,6 +293,8 @@ to the dataSource as [(dataSource)]. Edit mode is closed.
 **2. Node elements validation rules**
 - name must be string, null or undefined type
 - value must be positive number, null or undefined
+
+___
 
 ### UC-4: Edit Sankey Diagram Link
 **Scope:** `@projects/allomoney-library/src/lib/allomoney-sankey-diagram`
@@ -344,3 +348,86 @@ to the dataSource as [(dataSource)]. Edit mode is closed.
 - target must be one of the existing nodes (node[i].id)
 - source must be different from target
 - value must be positive number
+
+___
+
+## UC-5: Sankey Diagram Legend
+**Scope:** `@projects/allomoney-library/src/lib/allomoney-sankey-diagram`
+
+**Primary actor:** Demo App displays Component based on the provided data JSON in
+the `dataSource` property of Component.
+
+**Stakeholders & interests:** Component is a feature-rich Sankey diagram.
+Component shows money flow with legand.
+
+**Initial conditions:** Component shows at least one node.
+
+**Minimal guarantees:** Component shows at least the placeholder (business rule 4 from UC-1)
+and logs errors to the browser console if applicable.
+
+**Success guarantees:** Component shows legand.
+
+**Triggers:** Demo App shows Component. The `dataSource` property of Component had been set.
+
+**Main success scenario:**
+
+```
+1.     Component determines that the legend property had been provided (business rule 1).
+1.1.   Component successfully validates the provided legend property (business rule 2).
+1.2.   Component shows legend based on the legend property (business rule 3).
+```
+
+**Extensions:**
+
+```
+1.a    Component determines that the legend property had not been provided at all or has one of the empty states: null, undefined, {}.
+1.a.1  Component set the legend in the default values (business rule 2).
+1.b    Component determines that the legend property had been provided partially, e.g., { "visibility": true }.
+1.b.1  Component sets missing legend fields to default values (business rule 2).
+```
+
+**Business rules:**
+
+**1. Legend property can be set as**
+
+- directrly (<allomoney-sankey-diagram [legend]="customLegend" />)
+- via the options property of the component
+- using both of the above-mentioned options; the options property is considered the priority
+
+**2. Legend property JSON format and values by default**
+
+```tp
+type LegendLocation = 'left' | 'top' | 'right' | 'bottom';
+
+{
+  "legend": {
+    "visibility": boolean,
+    "location": LegendLocation,
+    "isFullLegendShown ": boolean,
+    "in": string
+    "out": string
+  }
+}
+```
+All fields of the legend are required and by default have the following values:
+```json
+{
+  "legend": {
+    "visibility": true,
+    "location": "bottom",
+    "isFullLegendShown ": false,
+    "inLabel": "Deposit",
+    "outLabel": "Withdrawal"
+  }
+}
+```
+
+**3. Legend display rules **
+
+- If `legend.isFullLegendShown` is false, show only the node color (small colored square) and the node names, 
+or their IDs if the names are empty. They must be set on a single wrapped line and are part of the component; 
+the component scrolls, including the legend. If the same node appears multiple times (circular links), 
+display multiple squares next to that node's name.
+
+- If `legend.isFullLegendShown` is true, show the same information as when `legend.isFullLegendShown` is false, 
+as well as user-friendly information about the in and out total sum for each node.

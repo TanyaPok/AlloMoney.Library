@@ -1,5 +1,6 @@
 import type { SankeyOrientation, SankeyTheme } from '../models/sankey-data';
 import { generatePalette } from './palette';
+import { makeValueFormatter } from './format-value';
 import type { ValidLink, ValidNode } from './validate-sankey-data';
 
 /** A node positioned by the layout engine, ready to bind to SVG. */
@@ -143,26 +144,6 @@ export const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
   labelFontSize: 12,
   maxDisplayedNodeName: 17,
 };
-
-/**
- * Builds the value formatter for the diagram. When a non-empty ISO 4217
- * currency code is supplied, values are formatted as currency in the host
- * locale via {@link Intl.NumberFormat} (e.g. `"$10.00"`). An unknown code makes
- * `Intl` throw, so we fall back to a plain fixed-2 number. Dependency-free —
- * `Intl` is a JavaScript platform built-in.
- */
-function makeValueFormatter(currency: string | null | undefined): (value: number) => string {
-  const code = typeof currency === 'string' ? currency.trim() : '';
-  if (code.length > 0) {
-    try {
-      const nf = new Intl.NumberFormat(undefined, { style: 'currency', currency: code });
-      return (value) => nf.format(value);
-    } catch {
-      // Unknown/invalid currency code — fall through to plain formatting.
-    }
-  }
-  return (value) => value.toFixed(2);
-}
 
 /** Anything carrying a horizontal band key and a mutable vertical position. */
 interface PlacedLabel {
