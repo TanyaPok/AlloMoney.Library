@@ -1301,7 +1301,11 @@ export class AllomoneySankeyDiagram {
     this.editState.set(null);
   }
 
-  /** Dispatches ENTER / Save / click-outside to the matching commit (UC-3/UC-4 step 3). */
+  /**
+   * Dispatches ENTER / Save to the matching commit (UC-3/UC-4 step 3). The
+   * overlay closes only on a successful commit (Save) or on Cancel/Esc — never
+   * on focus loss, so switching browser tabs or windows leaves the edit open.
+   */
   protected commitEdit(): void {
     const edit = this.editState();
     if (!edit) return;
@@ -1440,18 +1444,6 @@ export class AllomoneySankeyDiagram {
   /** Discards the edit and closes the overlay (UC-3/UC-4 extension 3.a.1.a: Esc/Cancel). */
   protected cancelEdit(): void {
     this.closeEdit();
-  }
-
-  /**
-   * Commits when focus leaves the whole overlay — i.e. the user "clicks outside
-   * the editable area" (UC-3/UC-4 step 2). Focus moving between the overlay's own
-   * controls (a field, Save, Cancel) is ignored so those keep their own intent.
-   */
-  protected onEditFocusOut(event: FocusEvent): void {
-    const container = event.currentTarget as HTMLElement;
-    const next = event.relatedTarget as Node | null;
-    if (next && container.contains(next)) return;
-    this.commitEdit();
   }
 
   constructor() {

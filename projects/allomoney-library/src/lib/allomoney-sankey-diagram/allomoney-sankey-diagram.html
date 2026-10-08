@@ -131,8 +131,7 @@
                      role="dialog"
                      aria-label="Edit node"
                      (keydown.enter)="commitEdit()"
-                     (keydown.escape)="cancelEdit()"
-                     (focusout)="onEditFocusOut($event)">
+                     (keydown.escape)="cancelEdit()">
                     @if (canEditNodeName()) {
                         <label class="allomoney-sankey__edit-field">
                             <span class="allomoney-sankey__edit-label">Name</span>
@@ -188,8 +187,7 @@
                      role="dialog"
                      aria-label="Edit flow"
                      (keydown.enter)="commitEdit()"
-                     (keydown.escape)="cancelEdit()"
-                     (focusout)="onEditFocusOut($event)">
+                     (keydown.escape)="cancelEdit()">
                     @if (canEditLinkSource()) {
                         <div class="allomoney-sankey__edit-field">
                             <span class="allomoney-sankey__edit-label">Source</span>
