@@ -55,7 +55,7 @@ export class App {
             {source: 2, target: 1, value: 20},
 
             {source: 3, target: 4, value: 250},
-            {source: 4, target: 5, value: 250}
+            {source: 4, target: 5, value: 250},
         ]
     });
 
@@ -73,8 +73,9 @@ export class App {
         canEditLinkValue: true,
         canEditLinkSource: true,
         canEditLinkTarget: true,
-        canAggregateLinks: true,
+        canAggregateLinks: false,
         canAddLink: true,
+        hideLinkValue: false,
         maxDisplayedNodeName: 20,
         legend: {
             visibility: true,

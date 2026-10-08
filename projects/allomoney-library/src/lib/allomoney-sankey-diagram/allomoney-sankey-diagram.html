@@ -99,7 +99,10 @@
             }
         </g>
 
-        <!-- Per-flow value labels, drawn on top of the ribbons. -->
+        <!-- Per-flow value labels, drawn on top of the ribbons. Hidden when
+             hideLinkValue is true (the default); the hover tooltip still reports
+             each flow's value. -->
+        @if (!hideLinkValue()) {
         <g class="allomoney-sankey__link-labels" aria-hidden="true">
             @for (link of renderLinks(); track link.id) {
                 <text class="allomoney-sankey__link-value"
@@ -117,6 +120,7 @@
                 </text>
             }
         </g>
+        }
 
         <!-- Node edit overlay (UC-3): an in-place form drawn over the edited node.
              Native <input>s inside <foreignObject> keep it keyboard- and

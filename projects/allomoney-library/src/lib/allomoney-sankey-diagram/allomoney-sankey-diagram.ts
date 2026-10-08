@@ -575,6 +575,11 @@ export class AllomoneySankeyDiagram {
     alias: 'canAddLink',
     transform: booleanAttribute,
   });
+  /** Raw `[hideLinkValue]` element input (see resolved {@link hideLinkValue}). */
+  readonly hideLinkValueInput = input(true, {
+    alias: 'hideLinkValue',
+    transform: booleanAttribute,
+  });
 
   /**
    * When `true`, a user may edit each node's name by double-clicking it.
@@ -648,6 +653,16 @@ export class AllomoneySankeyDiagram {
   /** `true` when at least one link element is editable (UC-4 extension 1.a). */
   protected readonly linkEditingEnabled = computed(
     () => this.canEditLinkValue() || this.canEditLinkSource() || this.canEditLinkTarget(),
+  );
+
+  /**
+   * When `true` (the default), each flow's on-diagram value label is hidden; when
+   * `false` the per-link values are shown. {@link options}`.hideLinkValue` when
+   * set, else the `[hideLinkValue]` input, else `true`. Does not affect the hover
+   * tooltip, which still reports a flow's value.
+   */
+  protected readonly hideLinkValue = computed(
+    () => this.options().hideLinkValue ?? this.hideLinkValueInput(),
   );
 
   /**
