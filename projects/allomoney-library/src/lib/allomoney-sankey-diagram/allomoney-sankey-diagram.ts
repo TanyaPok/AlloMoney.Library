@@ -873,8 +873,9 @@ export class AllomoneySankeyDiagram {
   });
 
   /**
-   * The placed custom tooltip, or `null` when nothing is hovered. A node shows
-   * only its value; a link shows source, target, and value on separate rows.
+   * The placed custom tooltip, or `null` when nothing is hovered (or the
+   * hovered node has no value, not even a calculated one). A node shows only
+   * its value; a link shows source, target, and value on separate rows.
    */
   protected readonly tooltipView = computed<TooltipView | null>(() => {
     const seed = this.hovered();
@@ -885,7 +886,9 @@ export class AllomoneySankeyDiagram {
     let rows: readonly TooltipRow[];
     if (seed.kind === 'node') {
       const node = view.nodes.find((n) => n.id === seed.id);
-      if (!node) return null;
+      // No value — not even a calculated one (no explicit value, no connected
+      // flow) — means nothing to show, so suppress the tooltip entirely.
+      if (!node || node.total === '') return null;
       rows = [{ label: null, value: node.total }];
     } else {
       const link = view.links.find((l) => l.id === seed.id);
