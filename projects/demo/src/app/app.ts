@@ -49,6 +49,13 @@ export class App {
         links: [
             {source: 0, target: 1, value: 100},
             {source: 0, target: 1, value: 50},
+            {source: 1, target: 0, value: 25},
+
+            {source: 1, target: 2, value: 25},
+            {source: 2, target: 1, value: 20},
+
+            {source: 3, target: 4, value: 250},
+            {source: 4, target: 5, value: 250}
         ]
     });
 
