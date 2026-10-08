@@ -118,6 +118,12 @@ export interface SankeyOptions {
    */
   readonly canEditLinkTarget?: boolean;
   /**
+   * When `true`, a user may add a new link from a node (UC-6): double-clicking a
+   * node opens its editor, whose "Source for" action starts the add-link flow with
+   * that node fixed as the new link's source. Defaults to `false`.
+   */
+  readonly canAddLink?: boolean;
+  /**
    * Message shown in the empty state when there are no flows to display.
    * Rendered as auto-escaped text (never as HTML), so any markup in the string
    * is shown literally and cannot execute. Defaults to `"No Data"`.

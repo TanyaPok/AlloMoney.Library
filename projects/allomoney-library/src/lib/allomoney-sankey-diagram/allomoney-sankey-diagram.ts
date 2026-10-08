@@ -127,8 +127,29 @@ interface LinkEditDraft extends EditDraftBase {
   readonly seedValue: string;
 }
 
+/**
+ * An add-link flow in progress (UC-6): launched from a node's editor via its
+ * "Source for" action, so the new link's source is fixed to that node while the
+ * user picks a target and enters a value.
+ */
+interface AddLinkDraft extends EditDraftBase {
+  readonly kind: 'add-link';
+  /** {@link SankeyNode.id} of the node the add was launched from — the new link's source. */
+  readonly sourceId: number;
+  /** Currently selected target id, or `null` until the user picks one. */
+  readonly target: number | null;
+  /** Value input seed (starts empty — the user enters the new link's value). */
+  readonly seedValue: string;
+  /**
+   * The node edit draft to restore when this flow ends: pressing Save or Cancel in
+   * add-link mode returns to the node editor it was opened from (never the bare
+   * diagram), with the node's in-progress name/value preserved.
+   */
+  readonly returnTo: NodeEditDraft;
+}
+
 /** The element being edited in place, or `null` when no edit is open. */
-type EditDraft = NodeEditDraft | LinkEditDraft;
+type EditDraft = NodeEditDraft | LinkEditDraft | AddLinkDraft;
 
 /** A selectable node option in a link source/target listbox. */
 interface NodeOption {
@@ -194,6 +215,32 @@ interface LinkEditView extends EditBox {
   readonly targetActiveId: string;
 }
 
+/**
+ * The add-link overlay (UC-6): geometry, the fixed source label, and the
+ * target combobox state. Mirrors {@link LinkEditView} but the source is a
+ * read-only label and only the target is chosen.
+ */
+interface AddLinkView extends EditBox {
+  /** Display label of the fixed source node (truncated to {@link AllomoneySankeyDiagram.maxDisplayedNodeName}). */
+  readonly sourceLabel: string;
+  /** Currently selected target id, or `null` until the user picks one. */
+  readonly target: number | null;
+  /** The selected target's display label, shown on the collapsed target trigger. */
+  readonly targetLabel: string;
+  readonly seedValue: string;
+  readonly error: string | null;
+  /** Which field {@link error} refers to; see {@link EditDraftBase.errorField}. */
+  readonly errorField: 'value' | 'endpoints' | null;
+  /** Options for the target combobox popup (each flagged selected/with a DOM id). */
+  readonly targetOptions: readonly NodeOption[];
+  /** `true` while the target combobox popup is open. */
+  readonly targetOpen: boolean;
+  /** `true` when the open popup drops upward; see {@link LinkEditView.dropUp}. */
+  readonly dropUp: boolean;
+  /** `id` of the selected target option — the combobox's `aria-activedescendant`. */
+  readonly targetActiveId: string;
+}
+
 /** One colour swatch in a legend row. */
 interface LegendSwatch {
   /** The node's colour. */
@@ -243,6 +290,15 @@ interface LegendView {
 
 /** Monotonic id source so each instance gets unique `aria` target ids. */
 let uidCounter = 0;
+
+/**
+ * Overlay field metrics (user units) used to locate an open combobox trigger
+ * within the edit overlay so its popup is given room in the right place. Must
+ * track the SCSS field spacing. A field before the open trigger shifts it down
+ * by one block plus the inter-field gap.
+ */
+const COMBO_FIELD_BLOCK = 46; // label + gap + control
+const COMBO_FIELD_GAP = 8;
 
 /**
  * Zero-dependency Sankey diagram component.
@@ -514,6 +570,11 @@ export class AllomoneySankeyDiagram {
     alias: 'canAggregateLinks',
     transform: booleanAttribute,
   });
+  /** Raw `[canAddLink]` element input (see resolved {@link canAddLink}). */
+  readonly canAddLinkInput = input(false, {
+    alias: 'canAddLink',
+    transform: booleanAttribute,
+  });
 
   /**
    * When `true`, a user may edit each node's name by double-clicking it.
@@ -536,6 +597,25 @@ export class AllomoneySankeyDiagram {
   /** `true` when at least one node element is editable (UC-3 extension 1.a). */
   protected readonly editingEnabled = computed(
     () => this.canEditNodeName() || this.canEditNodeValue(),
+  );
+
+  /**
+   * When `true`, a user may add a new link from a node (UC-6). The node's editor
+   * then offers a "Source for" action that starts the add-link flow with that node
+   * as the source. {@link options}`.canAddLink` when set, else the `[canAddLink]`
+   * input; defaults to `false`.
+   */
+  protected readonly canAddLink = computed(
+    () => this.options().canAddLink ?? this.canAddLinkInput(),
+  );
+
+  /**
+   * `true` when double-clicking a node should open its editor — either because a
+   * node element is editable (UC-3) or because a link may be added from it (UC-6).
+   * Gates node selection, focusability and the edit trigger.
+   */
+  protected readonly nodesInteractive = computed(
+    () => this.editingEnabled() || this.canAddLink(),
   );
 
   /**
@@ -808,7 +888,7 @@ export class AllomoneySankeyDiagram {
   protected toggleSelectNode(id: number, event: MouseEvent): void {
     event.stopPropagation();
     if (this.ghostAliasById().has(id)) return; // ghosts are inert phantoms
-    if (!this.editingEnabled()) return;
+    if (!this.nodesInteractive()) return;
     const cur = this.selected();
     this.selected.set(cur?.kind === 'node' && cur.id === id ? null : { kind: 'node', id });
   }
@@ -935,7 +1015,9 @@ export class AllomoneySankeyDiagram {
   private readonly editKey = computed(() => {
     const edit = this.editState();
     if (!edit) return null;
-    return edit.kind === 'node' ? `n${edit.nodeId}` : `l${edit.index}`;
+    if (edit.kind === 'node') return `n${edit.nodeId}`;
+    if (edit.kind === 'link') return `l${edit.index}`;
+    return `a${edit.sourceId}`;
   });
 
   /**
@@ -951,7 +1033,10 @@ export class AllomoneySankeyDiagram {
 
     const rows = (this.canEditNodeName() ? 1 : 0) + (this.canEditNodeValue() ? 1 : 0);
     const height = 78 + rows * 56 + (edit.error ? 30 : 0);
-    const box = this.placeBox(node.x + node.width / 2, node.y + node.height / 2, 220, height, view);
+    // Wider when the "Source for" action (UC-6) is shown, so its button plus
+    // Save/Cancel fit on one row without the label wrapping.
+    const width = this.canAddLink() ? 280 : 220;
+    const box = this.placeBox(node.x + node.width / 2, node.y + node.height / 2, width, height, view);
     return {
       ...box,
       seedName: edit.seedName,
@@ -1007,8 +1092,12 @@ export class AllomoneySankeyDiagram {
 
     // When a combobox is open, grow the <foreignObject> just enough (and in the
     // right direction) that its popup isn't clipped — downward by default, upward
-    // only when there isn't room below the trigger.
-    const placed = open ? this.placeComboPopup(open, baseBox, baseHeight, view) : null;
+    // only when there isn't room below the trigger. Fields render in order
+    // (source, target, value), so an open target trigger is pushed down by the
+    // source field above it.
+    const triggerOffset =
+      open === 'target' && this.canEditLinkSource() ? COMBO_FIELD_BLOCK + COMBO_FIELD_GAP : 0;
+    const placed = open ? this.placeComboPopup(triggerOffset, baseBox, baseHeight, view) : null;
 
     const selectedLabel = (opts: readonly NodeOption[], id: number): string =>
       opts.find((o) => o.id === id)?.label ?? String(id);
@@ -1032,6 +1121,66 @@ export class AllomoneySankeyDiagram {
   });
 
   /**
+   * The placed add-link overlay (UC-6), or `null` unless an add-link flow is open.
+   * Centered over the source node and clamped inside the viewBox. The source is a
+   * fixed read-only label; only the target combobox and the value are chosen.
+   */
+  protected readonly addLinkView = computed<AddLinkView | null>(() => {
+    const edit = this.editState();
+    const view = this.layout();
+    if (!edit || edit.kind !== 'add-link' || !view) return null;
+    const source = view.nodes.find((n) => n.id === edit.sourceId);
+    if (!source) return null;
+
+    // Target options are every real node except the source itself (business rule
+    // 2: source and target must differ), truncated to match the on-diagram names.
+    const max = this.maxDisplayedNodeName();
+    const targetOptions: NodeOption[] = view.nodes
+      .filter((n) => !n.ghost && n.id !== edit.sourceId)
+      .map((n) => ({
+        id: n.id,
+        label: this.truncateName(n.label, max),
+        optionId: `allomoney-sankey-tgt-${this.uid}-${n.id}`,
+        selected: n.id === edit.target,
+      }));
+
+    // The overlay shows three field rows: a static source, the target combobox,
+    // and the value input.
+    const open = this.openCombo() === 'target';
+    const fieldH = 56;
+    const baseHeight = 78 + fieldH * 3 + (edit.error ? 30 : 0);
+    const baseBox = this.placeBox(
+      source.x + source.width / 2,
+      source.y + source.height / 2,
+      240,
+      baseHeight,
+      view,
+    );
+
+    // The target combobox is the second field; the static source row above it
+    // pushes the trigger down by one block when the popup needs room.
+    const placed = open
+      ? this.placeComboPopup(COMBO_FIELD_BLOCK + COMBO_FIELD_GAP, baseBox, baseHeight, view)
+      : null;
+
+    return {
+      ...(placed?.box ?? baseBox),
+      sourceLabel: this.truncateName(source.label, max),
+      target: edit.target,
+      targetLabel:
+        targetOptions.find((o) => o.id === edit.target)?.label ??
+        (edit.target != null ? String(edit.target) : 'Select a node'),
+      seedValue: edit.seedValue,
+      error: edit.error,
+      errorField: edit.errorField,
+      targetOptions,
+      targetOpen: open,
+      dropUp: placed?.dropUp ?? false,
+      targetActiveId: edit.target != null ? `allomoney-sankey-tgt-${this.uid}-${edit.target}` : '',
+    };
+  });
+
+  /**
    * Places the open combobox's listbox popup. The popup opens below its trigger
    * (overlaying the fields beneath it) and the overlay grows downward just enough
    * to hold it. It flips above the trigger only when there isn't room below it in
@@ -1039,7 +1188,7 @@ export class AllomoneySankeyDiagram {
    * fixed so the trigger (and the rest of the overlay) stay exactly where they are.
    */
   private placeComboPopup(
-    which: 'source' | 'target',
+    triggerOffset: number,
     base: EditBox,
     baseHeight: number,
     view: SankeyLayout,
@@ -1048,14 +1197,11 @@ export class AllomoneySankeyDiagram {
     // locate the open trigger within the content — must track the SCSS.
     const POPUP_H = 126;
     const PAD_TOP = 10;
-    const FIELD_BLOCK = 46; // label + gap + control
-    const FIELD_GAP = 8;
     const INPUT_H = 28;
 
-    // Fields render in order (source, target, value), so a field before the open
-    // trigger shifts it down by one block.
-    const before = which === 'target' && this.canEditLinkSource() ? FIELD_BLOCK + FIELD_GAP : 0;
-    const triggerTop = base.y + PAD_TOP + before;
+    // The caller gives how far the open trigger sits below the content's top
+    // (one field block per field rendered before it).
+    const triggerTop = base.y + PAD_TOP + triggerOffset;
     const triggerBottom = triggerTop + INPUT_H;
     const roomBelow = view.height - triggerBottom;
     const roomAbove = triggerTop;
@@ -1064,7 +1210,7 @@ export class AllomoneySankeyDiagram {
       // Drop down: ensure the box extends POPUP_H below the trigger. Content is
       // top-anchored, so the extra height is added at the bottom and the trigger
       // does not move.
-      const height = Math.max(baseHeight, PAD_TOP + before + INPUT_H + POPUP_H);
+      const height = Math.max(baseHeight, PAD_TOP + triggerOffset + INPUT_H + POPUP_H);
       const y = Math.min(base.y, Math.max(0, view.height - height));
       return { box: { x: base.x, y, width: base.width, height }, dropUp: false };
     }
@@ -1091,13 +1237,14 @@ export class AllomoneySankeyDiagram {
   }
 
   /**
-   * Opens the node edit overlay (UC-3 trigger: double-click). No-op when neither
-   * node element is editable (extension 1.a). Seeds the inputs from the raw
-   * consumer data — not the derived/formatted labels — so a cleared field means
-   * "unset" rather than the id fallback or a summed value.
+   * Opens the node edit overlay (UC-3 trigger: double-click). No-op when the node
+   * offers nothing to do — neither a node element is editable (UC-3 extension 1.a)
+   * nor may a link be added from it (UC-6). Seeds the inputs from the raw consumer
+   * data — not the derived/formatted labels — so a cleared field means "unset"
+   * rather than the id fallback or a summed value.
    */
   protected startEdit(nodeId: number): void {
-    if (!this.editingEnabled()) return;
+    if (!this.nodesInteractive()) return;
     if (this.ghostAliasById().has(nodeId)) return; // ghosts cannot be edited
     const node = this.dataSource()?.nodes.find((n) => n?.id === nodeId);
     this.openCombo.set(null);
@@ -1141,6 +1288,47 @@ export class AllomoneySankeyDiagram {
     });
   }
 
+  /**
+   * Starts the add-link flow from the open node editor (UC-6 main scenario, step 1
+   * via the "Source for" action). No-op unless a node edit is open and
+   * {@link canAddLink} is on. The edited node becomes the new link's fixed source;
+   * the user then picks a target and enters a value. The node's in-progress
+   * name/value are captured so Save/Cancel here returns to the same node editor.
+   */
+  protected startAddLink(): void {
+    const edit = this.editState();
+    if (!edit || edit.kind !== 'node' || !this.canAddLink()) return;
+
+    const sourceId = edit.nodeId;
+    // Capture the current (possibly unsaved) node inputs so returning restores
+    // exactly what the user had typed, not the original seed values.
+    const returnTo: NodeEditDraft = {
+      ...edit,
+      seedName: this.canEditNodeName()
+        ? (this.nameInputRef()?.nativeElement.value ?? edit.seedName)
+        : edit.seedName,
+      seedValue: this.canEditNodeValue()
+        ? (this.valueInputRef()?.nativeElement.value ?? edit.seedValue)
+        : edit.seedValue,
+      error: null,
+      errorField: null,
+    };
+
+    // Preselect the first available target (a real node other than the source) so
+    // the combobox opens on a valid choice.
+    const firstTarget = this.layout()?.nodes.find((n) => !n.ghost && n.id !== sourceId)?.id ?? null;
+    this.openCombo.set(null);
+    this.editState.set({
+      kind: 'add-link',
+      sourceId,
+      target: firstTarget,
+      seedValue: '',
+      error: null,
+      errorField: null,
+      returnTo,
+    });
+  }
+
   /** Selects a node as the open link edit's source (combobox option pick/keyboard). */
   protected setEditSource(id: number): void {
     const edit = this.editState();
@@ -1148,11 +1336,14 @@ export class AllomoneySankeyDiagram {
     this.editState.set({ ...edit, source: id, error: null, errorField: null });
   }
 
-  /** Selects a node as the open link edit's target (combobox option pick/keyboard). */
+  /**
+   * Selects a node as the target of the open target combobox (combobox option
+   * pick/keyboard). Works for both a link edit (UC-4) and an add-link flow (UC-6).
+   */
   protected setEditTarget(id: number): void {
     const edit = this.editState();
-    if (!edit || edit.kind !== 'link') return;
-    this.editState.set({ ...edit, target: id, error: null, errorField: null });
+    if (edit?.kind === 'link') this.editState.set({ ...edit, target: id, error: null, errorField: null });
+    else if (edit?.kind === 'add-link') this.editState.set({ ...edit, target: id, error: null, errorField: null });
   }
 
   /** Toggles a source/target combobox popup open/closed (trigger click). */
@@ -1245,12 +1436,27 @@ export class AllomoneySankeyDiagram {
    */
   private moveComboSelection(event: KeyboardEvent, which: 'source' | 'target'): void {
     const edit = this.editState();
-    const view = this.linkEditView();
-    if (!edit || edit.kind !== 'link' || !view) return;
-    const options = which === 'source' ? view.sourceOptions : view.targetOptions;
-    if (options.length === 0) return;
+    if (!edit) return;
 
-    const currentId = which === 'source' ? edit.source : edit.target;
+    // Both the link overlay (source + target) and the add-link overlay (target
+    // only) drive this; read the options and current selection from whichever is
+    // open.
+    let options: readonly NodeOption[];
+    let currentId: number | null;
+    if (edit.kind === 'link') {
+      const view = this.linkEditView();
+      if (!view) return;
+      options = which === 'source' ? view.sourceOptions : view.targetOptions;
+      currentId = which === 'source' ? edit.source : edit.target;
+    } else if (edit.kind === 'add-link' && which === 'target') {
+      const view = this.addLinkView();
+      if (!view) return;
+      options = view.targetOptions;
+      currentId = edit.target;
+    } else {
+      return;
+    }
+    if (options.length === 0) return;
     const current = Math.max(0, options.findIndex((o) => o.id === currentId));
     let next = current;
     switch (event.key) {
@@ -1301,7 +1507,8 @@ export class AllomoneySankeyDiagram {
     const edit = this.editState();
     if (!edit) return;
     if (edit.kind === 'node') this.commitNodeEdit(edit);
-    else this.commitLinkEdit(edit);
+    else if (edit.kind === 'link') this.commitLinkEdit(edit);
+    else this.commitAddLink(edit);
   }
 
   /**
@@ -1423,9 +1630,64 @@ export class AllomoneySankeyDiagram {
     this.closeEdit();
   }
 
+  /**
+   * Validates an add-link flow (UC-6 step 3, business rule 2) and, when valid,
+   * appends the new link to {@link dataSource} (step 3.1), then returns to the node
+   * editor it was launched from. On failure it keeps the overlay open with the
+   * error (extension 3.a).
+   */
+  private commitAddLink(edit: AddLinkDraft): void {
+    const data = this.dataSource();
+    if (!data) {
+      this.closeEdit();
+      return;
+    }
+
+    const nodeIds = new Set(this.layout()?.nodes.filter((n) => !n.ghost).map((n) => n.id));
+    const source = edit.sourceId;
+    const target = edit.target;
+
+    // Business rule 2: target must be an existing node, distinct from the source.
+    if (target == null || !nodeIds.has(target)) {
+      this.editState.set({ ...edit, error: 'Select a target node.', errorField: 'endpoints' });
+      return;
+    }
+    if (source === target) {
+      this.editState.set({ ...edit, error: 'Source and target must be different.', errorField: 'endpoints' });
+      return;
+    }
+
+    // Business rule 2: value must be a positive number (a new link needs one to be
+    // drawn — unlike editing, an empty value is rejected here rather than deleting).
+    const raw = (this.linkValueInputRef()?.nativeElement.value ?? '').trim();
+    const value = Number(raw);
+    if (raw.length === 0 || !Number.isFinite(value) || value <= 0) {
+      this.editState.set({ ...edit, error: 'Value must be a positive number.', errorField: 'value' });
+      return;
+    }
+
+    this.dataSource.set({ ...data, links: [...data.links, { source, target, value }] });
+    // Save returns to the node editor the add was launched from (UC-6: Save/Cancel
+    // in add-link mode returns to Edit node mode).
+    this.openCombo.set(null);
+    this.editState.set({ ...edit.returnTo, error: null, errorField: null });
+  }
+
   /** Discards the edit and closes the overlay (UC-3/UC-4 extension 3.a.1.a: Esc/Cancel). */
   protected cancelEdit(): void {
     this.closeEdit();
+  }
+
+  /**
+   * Cancels the add-link flow (UC-6 extension 2.a / 3.a.1.a: Cancel or Esc) and
+   * returns to the node editor it was launched from — never closing straight to
+   * the bare diagram — restoring the node's in-progress name/value.
+   */
+  protected cancelAddLink(): void {
+    const edit = this.editState();
+    if (!edit || edit.kind !== 'add-link') return;
+    this.openCombo.set(null);
+    this.editState.set({ ...edit.returnTo, error: null, errorField: null });
   }
 
   constructor() {

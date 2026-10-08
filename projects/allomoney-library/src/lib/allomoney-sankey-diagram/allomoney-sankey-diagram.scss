@@ -582,6 +582,18 @@
   }
 }
 
+// Read-only field: the fixed source in the add-link overlay (UC-6). It reuses the
+// input's box but is static text, so it is muted and shows no text cursor, and a
+// long name is clamped to one line with an ellipsis.
+.allomoney-sankey__edit-static {
+  display: flex;
+  align-items: center;
+  color: var(--allomoney-tooltip-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 // Custom source/target combobox (native <select> options cannot wrap). The
 // trigger reuses the input's border/background via .allomoney-sankey__edit-input;
 // the popup floats below it so the overlay stays compact when collapsed.
@@ -689,6 +701,9 @@
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  // Keep each action's label on a single line (e.g. "Source for"); the overlay
+  // is sized to fit the row instead of letting the text wrap.
+  white-space: nowrap;
 
   &:focus-visible {
     outline: 2px solid var(--allomoney-edit-accent);
@@ -700,6 +715,12 @@
   border-color: var(--allomoney-edit-accent);
   background: var(--allomoney-edit-accent);
   color: #ffffff;
+}
+
+// UC-6 "Source for": a secondary action that sits apart from Save/Cancel, pushed
+// to the opposite (start) edge of the right-aligned actions row.
+.allomoney-sankey__edit-btn--add {
+  margin-inline-end: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
