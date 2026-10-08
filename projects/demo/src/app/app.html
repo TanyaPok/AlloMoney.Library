@@ -4,74 +4,74 @@
                                   (dataSourceChange)="data.set($event)"/>
     </div>
 
-<!--    @let d = data();-->
-<!--    <section class="data-view" aria-label="Diagram data">-->
-<!--        <div class="data-block">-->
-<!--            <h2>Nodes <span class="count">({{ d?.nodes?.length ?? 0 }})</span></h2>-->
-<!--            @if (d?.nodes?.length) {-->
-<!--                <table class="data-table">-->
-<!--                    <thead>-->
-<!--                    <tr>-->
-<!--                        <th>Id</th>-->
-<!--                        <th>Name</th>-->
-<!--                        <th>Value</th>-->
-<!--                        <th>Color</th>-->
-<!--                    </tr>-->
-<!--                    </thead>-->
-<!--                    <tbody>-->
-<!--                        @for (node of d!.nodes; track node.id) {-->
-<!--                            <tr>-->
-<!--                                <td>{{ node.id }}</td>-->
-<!--                                <td>{{ node.name ?? '—' }}</td>-->
-<!--                                <td>{{ node.value ?? '—' }}</td>-->
-<!--                                <td>-->
-<!--                                    @if (node.color) {-->
-<!--                                        <span class="swatch" [style.background]="node.color"></span>{{ node.color }}-->
-<!--                                    } @else {-->
-<!--                                        —-->
-<!--                                    }-->
-<!--                                </td>-->
-<!--                            </tr>-->
-<!--                        }-->
-<!--                    </tbody>-->
-<!--                </table>-->
-<!--            } @else {-->
-<!--                <p class="empty">No nodes.</p>-->
-<!--            }-->
-<!--        </div>-->
+    @let d = data();
+    <section class="data-view" aria-label="Diagram data">
+        <div class="data-block">
+            <h2>Nodes <span class="count">({{ d?.nodes?.length ?? 0 }})</span></h2>
+            @if (d?.nodes?.length) {
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>Id</th>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Color</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        @for (node of d!.nodes; track node.id) {
+                            <tr>
+                                <td>{{ node.id }}</td>
+                                <td>{{ node.name ?? '—' }}</td>
+                                <td>{{ node.value ?? '—' }}</td>
+                                <td>
+                                    @if (node.color) {
+                                        <span class="swatch" [style.background]="node.color"></span>{{ node.color }}
+                                    } @else {
+                                        —
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            } @else {
+                <p class="empty">No nodes.</p>
+            }
+        </div>
 
-<!--        <div class="data-block">-->
-<!--            <h2>Links <span class="count">({{ d?.links?.length ?? 0 }})</span></h2>-->
-<!--            @if (d?.links?.length) {-->
-<!--                <table class="data-table">-->
-<!--                    <thead>-->
-<!--                    <tr>-->
-<!--                        <th>Source</th>-->
-<!--                        <th>Target</th>-->
-<!--                        <th>Value</th>-->
-<!--                        <th>Color</th>-->
-<!--                    </tr>-->
-<!--                    </thead>-->
-<!--                    <tbody>-->
-<!--                        @for (link of d!.links; track $index) {-->
-<!--                            <tr>-->
-<!--                                <td>{{ link.source }}</td>-->
-<!--                                <td>{{ link.target }}</td>-->
-<!--                                <td>{{ link.value }}</td>-->
-<!--                                <td>-->
-<!--                                    @if (link.color) {-->
-<!--                                        <span class="swatch" [style.background]="link.color"></span>{{ link.color }}-->
-<!--                                    } @else {-->
-<!--                                        —-->
-<!--                                    }-->
-<!--                                </td>-->
-<!--                            </tr>-->
-<!--                        }-->
-<!--                    </tbody>-->
-<!--                </table>-->
-<!--            } @else {-->
-<!--                <p class="empty">No links.</p>-->
-<!--            }-->
-<!--        </div>-->
-<!--    </section>-->
+        <div class="data-block">
+            <h2>Links <span class="count">({{ d?.links?.length ?? 0 }})</span></h2>
+            @if (d?.links?.length) {
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Target</th>
+                        <th>Value</th>
+                        <th>Color</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        @for (link of d!.links; track $index) {
+                            <tr>
+                                <td>{{ link.source }}</td>
+                                <td>{{ link.target }}</td>
+                                <td>{{ link.value }}</td>
+                                <td>
+                                    @if (link.color) {
+                                        <span class="swatch" [style.background]="link.color"></span>{{ link.color }}
+                                    } @else {
+                                        —
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            } @else {
+                <p class="empty">No links.</p>
+            }
+        </div>
+    </section>
 </main>

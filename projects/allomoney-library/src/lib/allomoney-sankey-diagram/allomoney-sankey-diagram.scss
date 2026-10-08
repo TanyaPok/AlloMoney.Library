@@ -286,14 +286,25 @@
   cursor: pointer;
 }
 
-// Suppress the UA's default black focus box on pointer click; keyboard focus
-// keeps the accent ring below.
-.allomoney-sankey__link--editable:focus {
+// Never let the UA paint its default black focus box on a ribbon, the links/
+// nodes groups, the SVG canvas, or the scroll viewport: on a graphic these
+// frame an element's bounding box and read as a stray rectangle around the
+// diagram. Editable ribbons/nodes still show a deliberate accent ring on
+// keyboard focus (:focus-visible), handled by their own rules. The scroll
+// viewport is keyboard-scrollable; the diagram's focusable nodes/links carry
+// the visible focus, so suppressing the viewport's own box is safe.
+.allomoney-sankey__link:focus,
+.allomoney-sankey__link:focus-visible,
+.allomoney-sankey__links:focus,
+.allomoney-sankey__nodes:focus,
+.allomoney-sankey__canvas:focus,
+.allomoney-sankey__canvas:focus-visible,
+.allomoney-sankey__scroll:focus,
+.allomoney-sankey__scroll:focus-visible {
   outline: none;
 }
 
 .allomoney-sankey__link--editable:focus-visible {
-  outline: none;
   stroke: var(--allomoney-edit-accent);
   stroke-width: 2;
 }

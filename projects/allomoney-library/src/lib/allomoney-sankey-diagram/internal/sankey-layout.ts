@@ -13,7 +13,7 @@ export interface LayoutNode {
    * Formatted effective node total (the explicit value, or the derived flow
    * magnitude when none was given) — used for the hover tooltip. Empty when the
    * node has neither an explicit value nor any connected flow (a cleared,
-   * unlinked node), so the tooltip shows nothing rather than a misleading `0`.
+   * unlinked node), in which case no tooltip is shown rather than a misleading `0`.
    */
   readonly total: string;
   readonly x: number;
@@ -877,7 +877,7 @@ export function computeSankeyLayout(
       label: w.node.label,
       valueLabel: w.node.value != null ? format(w.node.value) : null,
       // A node with no explicit value and no connected flow has nothing to
-      // total — show it empty in the tooltip instead of a misleading `0`.
+      // total — left empty so no tooltip is shown instead of a misleading `0`.
       total:
         w.node.value == null && (inflow.get(w.node.id) ?? 0) === 0 && (outflow.get(w.node.id) ?? 0) === 0
           ? ''

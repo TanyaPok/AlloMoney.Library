@@ -39,21 +39,16 @@ export class App {
     // protected readonly data = signal<SankeyData | null | undefined>(null);
     protected readonly data = signal<SankeyData | null | undefined>({
         nodes: [
-            {id: 0, name: "Bank Account 1", value: 365000},
-            {id: 1, name: "Bank Account 2", value: 150369},
-            {id: 2, name: "Investment Account 1"},
-            {id: 3, name: "Investment Account 2"},
-            {id: 4, name: "Special Account 1", value: 10000},
-            {id: 5, value: 550}
+            {id: 0, name: "Account 0"},
+            {id: 1, name: "Account 1"},
+            {id: 2, name: "Account 2"},
+            {id: 3},
+            {id: 4, name: "Account 4"},
+            {id: 5, name: "Account 5"}
         ],
         links: [
-            {source: 0, target: 2, value: 100000},
-            {source: 0, target: 2, value: 5000.505},
-            {source: 2, target: 0, value: 50000},
-            {source: 0, target: 3, value: 50000},
-            {source: 1, target: 3, value: 0},
-            {source: 1, target: 4, value: 11000},
-            {source: 4, target: 0, value: 500},
+            {source: 0, target: 1, value: 100},
+            {source: 0, target: 1, value: 50},
         ]
     });
 
@@ -77,8 +72,8 @@ export class App {
             visibility: true,
             location: 'bottom',
             isFullLegendShown: true,
-            inLabel: "",
-            outLabel: "",
+            inLabel: "In",
+            outLabel: "Out",
         },
     };
 }
