@@ -67,7 +67,7 @@ export class App {
         verticalScrolling: true,
         canEditNodeName: true,
         canEditNodeValue: true,
-        currency: 'USD',
+        currency: 'CAD',
         canEditLinkValue: true,
         canEditLinkSource: true,
         canEditLinkTarget: true,

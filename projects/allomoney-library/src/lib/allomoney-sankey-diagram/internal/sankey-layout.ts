@@ -11,7 +11,9 @@ export interface LayoutNode {
   readonly valueLabel: string | null;
   /**
    * Formatted effective node total (the explicit value, or the derived flow
-   * magnitude when none was given). Always present — used for the hover tooltip.
+   * magnitude when none was given) — used for the hover tooltip. Empty when the
+   * node has neither an explicit value nor any connected flow (a cleared,
+   * unlinked node), so the tooltip shows nothing rather than a misleading `0`.
    */
   readonly total: string;
   readonly x: number;
@@ -356,6 +358,15 @@ export function computeSankeyLayout(
   const format = makeValueFormatter(currency);
   const { width, height, nodeWidth, nodePadding, marginTop, marginRight, marginBottom, marginLeft, labelGap, minColumnGap, minThickness, minLabelGap, labelFontSize, maxDisplayedNodeName } = options;
 
+  // Rough proportional-font estimate of a node name's drawn width (capped to the
+  // display limit, plus one char for the ellipsis the component appends when it
+  // truncates). Reused for margin sizing and the vertical inter-node name spacing.
+  const avgCharWidth = labelFontSize * 0.62;
+  const estNameWidth = (label: string): number => {
+    const shown = Math.min(label.length, maxDisplayedNodeName) + (label.length > maxDisplayedNodeName ? 1 : 0);
+    return shown * avgCharWidth;
+  };
+
   // Several links between the same two nodes are shown as one aggregate ribbon
   // (their summed value) unless aggregation is turned off, in which case every
   // link is kept as-is. Everything below — cycle detection, magnitude, stacking
@@ -544,19 +555,60 @@ export function computeSankeyLayout(
   // requested width is too narrow for every rank the canvas grows along the
   // flow axis to that necessary minimum (nodes must never overlap). A graph
   // that already fits keeps spreading across the full requested width.
-  const innerWidth = width - marginLeft - marginRight;
+  // In horizontal orientation every node's name is drawn to its LEFT, so the
+  // first column's names extend into the left margin. A fixed margin clips a long
+  // name at the component's left edge, so grow the margin to fit the widest
+  // first-column name (plus the label gap); the canvas grows with it rather than
+  // the name being cut off. (Vertical draws names above nodes — handled by the
+  // inter-node gap logic, not the outer margin.)
+  const firstColumnNameWidth = vertical
+    ? 0
+    : (columns[0] ?? []).reduce((max, w) => Math.max(max, estNameWidth(w.node.label)), 0);
+  const effectiveMarginLeft = Math.max(marginLeft, labelGap + firstColumnNameWidth);
+
+  // Every non-first column's names are drawn (right-anchored) in the gap just
+  // left of that column, so the gap must be wide enough to clear both the node
+  // and the widest name in it — otherwise a long name runs left into the previous
+  // column and the names of adjacent columns overlap. Widen the per-column gap to
+  // fit the widest such name (plus the label gap), never below minColumnGap; the
+  // canvas grows along the flow axis so the names have room instead of colliding.
+  // (Vertical draws names above nodes — handled by the inter-node gap logic.)
+  const widestInnerName = vertical
+    ? 0
+    : columns.slice(1).reduce(
+        (max, column) => column.reduce((m, w) => Math.max(m, estNameWidth(w.node.label)), max),
+        0,
+      );
+  const effectiveColumnGap = vertical ? minColumnGap : Math.max(minColumnGap, labelGap + widestInnerName);
+
+  const innerWidth = width - effectiveMarginLeft - marginRight;
   const requiredInnerWidth =
-    maxRank === 0 ? innerWidth : maxRank * (nodeWidth + minColumnGap) + nodeWidth;
+    maxRank === 0 ? innerWidth : maxRank * (nodeWidth + effectiveColumnGap) + nodeWidth;
   const effectiveInnerWidth = Math.max(innerWidth, requiredInnerWidth);
-  const effectiveWidth = marginLeft + effectiveInnerWidth + marginRight;
+  const effectiveWidth = effectiveMarginLeft + effectiveInnerWidth + marginRight;
   const columnX = (rank: number): number =>
     maxRank === 0
-      ? marginLeft + (effectiveInnerWidth - nodeWidth) / 2
-      : marginLeft + (rank / maxRank) * (effectiveInnerWidth - nodeWidth);
+      ? effectiveMarginLeft + (effectiveInnerWidth - nodeWidth) / 2
+      : effectiveMarginLeft + (rank / maxRank) * (effectiveInnerWidth - nodeWidth);
 
   // --- 5. Vertical position (stack + distribute each column) -------------
   // Size every node first. A node is never drawn thinner than minThickness.
   for (const w of work) w.height = Math.max(w.magnitude * scale, minThickness);
+
+  // In VERTICAL orientation each node's name is centered ABOVE it (along the
+  // cross axis), so the first and last node in every rank — flush against the
+  // cross-axis edges — have up to half their name hanging past the edge. Grow the
+  // cross-axis margins to hold that overhang so an edge node's long name is not
+  // cut off or left floating past the canvas. In horizontal orientation names sit
+  // on one line at the node's center and never overhang this axis, so its margins
+  // are unchanged.
+  const crossOverhang = (w: WorkNode): number => Math.max(0, estNameWidth(w.node.label) / 2 - w.height / 2);
+  const effectiveMarginTop = vertical
+    ? columns.reduce((m, col) => (col.length > 0 ? Math.max(m, crossOverhang(col[0])) : m), marginTop)
+    : marginTop;
+  const effectiveMarginBottom = vertical
+    ? columns.reduce((m, col) => (col.length > 0 ? Math.max(m, crossOverhang(col[col.length - 1])) : m), marginBottom)
+    : marginBottom;
 
   // The minimum gap each consecutive pair in a column needs. Nodes must never
   // overlap (>= nodePadding). In VERTICAL orientation each node's name is drawn
@@ -566,16 +618,13 @@ export function computeSankeyLayout(
   // fixed gap. In horizontal orientation names sit to the left and stack, so
   // they never collide this way and the gap is just nodePadding. Columns are in
   // placement (input) order, which is top-to-bottom order.
-  const avgCharWidth = labelFontSize * 0.62; // rough proportional-font estimate
   const labelPad = labelFontSize; // breathing room between two adjacent names
-  const estLabelWidth = (label: string): number =>
-    Math.min(label.length, maxDisplayedNodeName) * avgCharWidth;
   const requiredGap = (a: WorkNode, b: WorkNode): number => {
     if (!vertical) return nodePadding;
     // centre-to-centre must clear both half-labels + padding; the gap is that
     // minus the two half-heights already between the centres.
     const forLabels =
-      (estLabelWidth(a.node.label) + estLabelWidth(b.node.label)) / 2 +
+      (estNameWidth(a.node.label) + estNameWidth(b.node.label)) / 2 +
       labelPad -
       (a.height + b.height) / 2;
     return Math.max(nodePadding, forLabels);
@@ -592,7 +641,7 @@ export function computeSankeyLayout(
   });
   const requiredInnerHeight = columnHeights.reduce((max, h) => Math.max(max, h), 0);
   const effectiveInnerHeight = Math.max(innerHeight, requiredInnerHeight);
-  const effectiveHeight = marginTop + effectiveInnerHeight + marginBottom;
+  const effectiveHeight = effectiveMarginTop + effectiveInnerHeight + effectiveMarginBottom;
 
   for (let i = 0; i < columns.length; i++) {
     const column = columns[i];
@@ -606,7 +655,7 @@ export function computeSankeyLayout(
     const gapSum = gaps.reduce((sum, g) => sum + g, 0);
     const extra = Math.max(0, effectiveInnerHeight - stacked - gapSum);
     const extraPer = gaps.length > 0 ? extra / gaps.length : 0;
-    let cursor = gaps.length > 0 ? marginTop : marginTop + extra / 2;
+    let cursor = gaps.length > 0 ? effectiveMarginTop : effectiveMarginTop + extra / 2;
     for (let k = 0; k < column.length; k++) {
       const w = column[k];
       w.x = columnX(w.rank);
@@ -734,8 +783,11 @@ export function computeSankeyLayout(
   });
 
   // Business rule 2: two or more link value labels cannot overlap. Nudge apart
-  // any that share a horizontal band; horizontal midpoints are preserved.
-  separateLabelBands(geoms, minLabelGap, marginTop, effectiveHeight - marginBottom);
+  // any that share a horizontal band; horizontal midpoints are preserved. A value
+  // label stays centered on its ribbon (that is what ties it to its flow); a node
+  // name that would collide with one instead steps aside within its own node — see
+  // `placeNameY` in the node-geometry section below.
+  separateLabelBands(geoms, minLabelGap, effectiveMarginTop, effectiveHeight - effectiveMarginBottom);
 
   // When aggregation is off, parallel links share the same `source-target`; a
   // per-pair occurrence suffix keeps every id unique for `@for` tracking and
@@ -769,9 +821,53 @@ export function computeSankeyLayout(
   // (see the reference diagrams). For vertical orientation we transpose every
   // coordinate (x↔y): the left-of-node name becomes a centered above-node label,
   // so only the text anchor changes ('end' → 'middle').
+  //
+  // A name is centered on its node by default, but it need not be: in horizontal
+  // orientation the name shares the column gap with the incoming links' value
+  // labels, so a centered name can land on one. Centering is a preference, not a
+  // requirement — so when the centered name would collide with a value label, it
+  // steps up or down to the nearest clear spot that still lies WITHIN the node's
+  // own vertical bounds. Staying inside those bounds also keeps it clear of every
+  // other node's name (node spans do not overlap), so names never collide either.
+  // If the node is too short to hold the name clear of the values, it stays
+  // centered (space does not permit). Value labels are never moved here.
+  const halfLine = labelFontSize / 2;
+  const placeNameY = (w: WorkNode): number => {
+    const center = w.y + w.height / 2;
+    if (vertical || w.ghost) return center;
+    const lo = w.y + halfLine;
+    const hi = w.y + w.height - halfLine;
+    if (lo >= hi) return center; // node shorter than a line — no room to shift
+    const nameRight = w.x - labelGap;
+    const nameLeft = nameRight - estNameWidth(w.node.label);
+    // Vertical centers of the value labels whose horizontal span sits under the
+    // name (the links feeding into this node from the gap on its left).
+    const obstacles = geoms
+      .filter((g) => g.labelX + estNameWidth(g.valueLabel) / 2 > nameLeft && g.labelX - estNameWidth(g.valueLabel) / 2 < nameRight)
+      .map((g) => g.labelY);
+    const clearOf = (y: number): boolean => obstacles.every((o) => Math.abs(y - o) >= minLabelGap);
+    if (clearOf(center)) return center;
+    // Try the nearest clear spot: just outside each obstacle's band, clamped into
+    // the node's bounds. Pick the valid candidate closest to the center.
+    const clamp = (y: number): number => Math.min(hi, Math.max(lo, y));
+    let best = center;
+    let bestDist = Infinity;
+    for (const o of obstacles) {
+      for (const cand of [clamp(o - minLabelGap), clamp(o + minLabelGap)]) {
+        if (cand < lo || cand > hi || !clearOf(cand)) continue;
+        const dist = Math.abs(cand - center);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = cand;
+        }
+      }
+    }
+    return best;
+  };
+
   const layoutNodes: LayoutNode[] = work.map((w) => {
     const canonLabelX = w.x - labelGap; // canonical: just left of the node
-    const canonLabelY = w.y + w.height / 2; // canonical: vertical center
+    const canonLabelY = placeNameY(w); // vertical center, nudged within bounds to dodge value labels
     const x = vertical ? w.y : w.x;
     const y = vertical ? w.x : w.y;
     const nodeW = vertical ? w.height : nodeWidth;
@@ -780,7 +876,12 @@ export function computeSankeyLayout(
       id: w.node.id,
       label: w.node.label,
       valueLabel: w.node.value != null ? format(w.node.value) : null,
-      total: format(w.magnitude),
+      // A node with no explicit value and no connected flow has nothing to
+      // total — show it empty in the tooltip instead of a misleading `0`.
+      total:
+        w.node.value == null && (inflow.get(w.node.id) ?? 0) === 0 && (outflow.get(w.node.id) ?? 0) === 0
+          ? ''
+          : format(w.magnitude),
       x,
       y,
       width: nodeW,
