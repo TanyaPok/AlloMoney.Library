@@ -431,3 +431,53 @@ display multiple squares next to that node's name.
 
 - If `legend.isFullLegendShown` is true, show the same information as when `legend.isFullLegendShown` is false, 
 as well as user-friendly information about the in and out total sum for each node.
+
+___
+
+## UC-6: Add Sankey Diagram Link
+**Scope:** `@projects/allomoney-library/src/lib/allomoney-sankey-diagram`
+
+**Primary actor:** User double-clicks on Component node.
+
+**Initial conditions:** Show Sankey Diagram By Default use case is successfully executed,
+regardless of whether default parameters are used. At least two nodes are displayed.
+
+**Minimal guarantees:** Component conforms to Initial conditions and logs errors to the browser console, if applicable.
+
+**Success guarantees:** User add a link and these changes are applied to the data
+that was provided to the dataSource as [(dataSource)].
+
+**Triggers:** User double-clicks on Component node.
+
+**Main success scenario:**
+
+```
+1. Component successfully verifies User permission to add a link using business rule 1.
+1.1. User select target and enter value for a new link (business rule 2).
+2. User presses Save.
+3. Component successfully verifies entered data (business rule 2).
+3.1. Component applies the entered data to dataSource and to the data that was provided 
+to the dataSource as [(dataSource)]. Add link mode is closed.
+```
+
+**Extensions:**
+
+```
+1.a (failure) User cannot add a new link. The use case is over.
+2.a User precess Cancel. The use case is over.
+3.a. Component verifies entered data and show validation error to User.
+3.a.1.a User clicks Cancel or Esc. Add link mode closes. The use case is over.
+3.a.1.b User makes correct changes. Step 3 from the main success scenario executes.
+```
+
+**Business rules:**
+
+**1. CanAddLink component property**
+
+- if `CanAddLink` is true than User can add a new link between two nodes
+
+**2. Link elements validation rules**
+- source must be one of the existing nodes (node[i].id)
+- target must be one of the existing nodes (node[i].id)
+- source must be different from target
+- value must be positive number

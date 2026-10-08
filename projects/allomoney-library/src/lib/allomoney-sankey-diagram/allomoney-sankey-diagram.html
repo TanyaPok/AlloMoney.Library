@@ -60,15 +60,15 @@
              enabled the group becomes a keyboard-operable button and is no
              longer hidden from assistive tech. -->
         <g class="allomoney-sankey__nodes"
-           [attr.aria-hidden]="editingEnabled() ? null : true">
+           [attr.aria-hidden]="nodesInteractive() ? null : true">
             @for (node of renderNodes(); track node.id) {
                 <g class="allomoney-sankey__node"
                    [class.allomoney-sankey--dim]="node.dimmed"
                    [class.allomoney-sankey__node--selected]="node.selected"
-                   [class.allomoney-sankey__node--editable]="editingEnabled() && !node.ghost"
-                   [attr.role]="editingEnabled() && !node.ghost ? 'button' : null"
-                   [attr.tabindex]="editingEnabled() && !node.ghost ? 0 : null"
-                   [attr.aria-label]="editingEnabled() && !node.ghost ? node.editLabel : null"
+                   [class.allomoney-sankey__node--editable]="nodesInteractive() && !node.ghost"
+                   [attr.role]="nodesInteractive() && !node.ghost ? 'button' : null"
+                   [attr.tabindex]="nodesInteractive() && !node.ghost ? 0 : null"
+                   [attr.aria-label]="nodesInteractive() && !node.ghost ? node.editLabel : null"
                    (pointerenter)="onHoverNode(node.id, $event)"
                    (pointerleave)="onLeave()"
                    (focus)="onFocusNode(node.id)"
@@ -156,11 +156,23 @@
                         <p class="allomoney-sankey__edit-error" role="alert">{{ edit.error }}</p>
                     }
                     <div class="allomoney-sankey__edit-actions">
-                        <button type="button"
-                                class="allomoney-sankey__edit-btn allomoney-sankey__edit-btn--primary"
-                                (click)="commitEdit()">
-                            Save
-                        </button>
+                        <!-- UC-6: make this node the source of a new link. Opens the
+                             add-link overlay; returning here restores this editor. -->
+                        @if (canAddLink()) {
+                            <button type="button"
+                                    class="allomoney-sankey__edit-btn allomoney-sankey__edit-btn--add"
+                                    aria-label="Add a flow with this node as the source"
+                                    (click)="startAddLink()">
+                                Source for
+                            </button>
+                        }
+                        @if (editingEnabled()) {
+                            <button type="button"
+                                    class="allomoney-sankey__edit-btn allomoney-sankey__edit-btn--primary"
+                                    (click)="commitEdit()">
+                                Save
+                            </button>
+                        }
                         <button type="button"
                                 class="allomoney-sankey__edit-btn"
                                 (click)="cancelEdit()">
@@ -297,6 +309,94 @@
                         <button type="button"
                                 class="allomoney-sankey__edit-btn"
                                 (click)="cancelEdit()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </foreignObject>
+        }
+
+        <!-- Add-link overlay (UC-6): launched from a node's editor via "Source
+             for", so the source is fixed (read-only) and the user picks a target
+             (same ARIA combobox as UC-4) and enters a value. Save/Cancel (or Esc)
+             return to the node editor, not the bare diagram. -->
+        @if (addLinkView(); as edit) {
+            <foreignObject [attr.x]="edit.x"
+                           [attr.y]="edit.y"
+                           [attr.width]="edit.width"
+                           [attr.height]="edit.height">
+                <div class="allomoney-sankey__edit"
+                     [class.allomoney-sankey__edit--drop-up]="edit.dropUp"
+                     role="dialog"
+                     aria-label="Add flow"
+                     (keydown.enter)="commitEdit()"
+                     (keydown.escape)="cancelAddLink()">
+                    <div class="allomoney-sankey__edit-field">
+                        <span class="allomoney-sankey__edit-label">Source</span>
+                        <span class="allomoney-sankey__edit-input allomoney-sankey__edit-static">{{ edit.sourceLabel }}</span>
+                    </div>
+                    <div class="allomoney-sankey__edit-field">
+                        <span class="allomoney-sankey__edit-label">Target</span>
+                        <div class="allomoney-sankey__combobox"
+                             (focusout)="onComboFocusOut($event, 'target')">
+                            <div #targetCombo
+                                 class="allomoney-sankey__edit-input allomoney-sankey__combobox-trigger"
+                                 role="combobox"
+                                 tabindex="0"
+                                 aria-label="Target"
+                                 aria-haspopup="listbox"
+                                 [attr.aria-invalid]="edit.errorField === 'endpoints' ? true : null"
+                                 [attr.aria-controls]="edit.targetOpen ? targetListId : null"
+                                 [attr.aria-expanded]="edit.targetOpen"
+                                 [attr.aria-activedescendant]="edit.targetOpen ? edit.targetActiveId : null"
+                                 (click)="toggleCombo('target')"
+                                 (keydown)="onComboKeydown($event, 'target')">
+                                <span class="allomoney-sankey__combobox-value">{{ edit.targetLabel }}</span>
+                                <span class="allomoney-sankey__combobox-arrow" aria-hidden="true"></span>
+                            </div>
+                            @if (edit.targetOpen) {
+                                <div #targetListbox
+                                     class="allomoney-sankey__listbox allomoney-sankey__combobox-popup"
+                                     [class.allomoney-sankey__combobox-popup--up]="edit.dropUp"
+                                     role="listbox"
+                                     [id]="targetListId"
+                                     aria-label="Target">
+                                    @for (opt of edit.targetOptions; track opt.id) {
+                                        <div class="allomoney-sankey__option"
+                                             [class.allomoney-sankey__option--selected]="opt.selected"
+                                             role="option"
+                                             [id]="opt.optionId"
+                                             [attr.aria-selected]="opt.selected"
+                                             (mousedown)="$event.preventDefault()"
+                                             (click)="chooseTarget(opt.id)">
+                                            {{ opt.label }}
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <label class="allomoney-sankey__edit-field">
+                        <span class="allomoney-sankey__edit-label">Value</span>
+                        <input #linkValueInput
+                               class="allomoney-sankey__edit-input"
+                               type="text"
+                               inputmode="decimal"
+                               [value]="edit.seedValue"
+                               [attr.aria-invalid]="edit.errorField === 'value' ? true : null"/>
+                    </label>
+                    @if (edit.error) {
+                        <p class="allomoney-sankey__edit-error" role="alert">{{ edit.error }}</p>
+                    }
+                    <div class="allomoney-sankey__edit-actions">
+                        <button type="button"
+                                class="allomoney-sankey__edit-btn allomoney-sankey__edit-btn--primary"
+                                (click)="commitEdit()">
+                            Save
+                        </button>
+                        <button type="button"
+                                class="allomoney-sankey__edit-btn"
+                                (click)="cancelAddLink()">
                             Cancel
                         </button>
                     </div>

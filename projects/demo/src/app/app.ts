@@ -67,6 +67,7 @@ export class App {
         canEditLinkSource: true,
         canEditLinkTarget: true,
         canAggregateLinks: true,
+        canAddLink: true,
         maxDisplayedNodeName: 20,
         legend: {
             visibility: true,
