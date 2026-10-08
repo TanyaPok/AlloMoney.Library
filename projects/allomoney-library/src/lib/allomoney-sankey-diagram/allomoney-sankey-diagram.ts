@@ -119,12 +119,6 @@ interface LinkEditDraft extends EditDraftBase {
    * same two nodes are told apart and the edit lands on the one that was opened.
    */
   readonly index: number;
-  /**
-   * `true` when the edited ribbon is an aggregate of several parallel links. Its
-   * value is a derived sum and is not editable; a source/target change is applied
-   * to every combined link.
-   */
-  readonly aggregated: boolean;
   /** Original source id — seeds the source select. */
   readonly source: number;
   /** Original target id — seeds the target select. */
@@ -1002,7 +996,7 @@ export class AllomoneySankeyDiagram {
     // single label+trigger row (like the value field).
     const open = this.openCombo();
     const fieldH = 56; // label + single control row
-    const valueH = this.canEditLinkValue() && !edit.aggregated ? fieldH : 0;
+    const valueH = this.canEditLinkValue() ? fieldH : 0;
     const sourceH = this.canEditLinkSource() ? fieldH : 0;
     const targetH = this.canEditLinkTarget() ? fieldH : 0;
     const baseHeight = 78 + valueH + sourceH + targetH + (edit.error ? 30 : 0);
@@ -1124,24 +1118,21 @@ export class AllomoneySankeyDiagram {
    */
   protected startLinkEdit(link: LayoutLink): void {
     if (!this.linkEditingEnabled()) return;
-    // An aggregated ribbon's value is the sum of several parallel links, so it
-    // has no single value to write back — value editing is refused (with a
-    // console message) even when canEditLinkValue is on. Source/target editing
-    // is still allowed and is applied to every combined link on commit.
-    if (link.aggregated && this.canEditLinkValue()) {
+    // An aggregated ribbon stands in for several parallel links between the same
+    // two nodes: it has no single value to write back, and editing its source or
+    // target would silently rewrite every combined link at once. Rather than open
+    // a partial, ambiguous edit, a combined ribbon is not editable in place.
+    if (link.aggregated) {
       console.warn(
-        `[allomoney-sankey-diagram] Cannot edit the value of an aggregated flow (${link.a11yLabel}): it is the combined total of several links between the same nodes. Changing its source or target applies to every combined link.`,
+        `[allomoney-sankey-diagram] Cannot edit an aggregated flow (${link.a11yLabel}): it is the combined total of several links between the same nodes. Turn off link aggregation (canAggregateLinks) to edit the individual links.`,
       );
+      return;
     }
-    // With value editing suppressed for an aggregate, there may be nothing left
-    // to edit (value was the only enabled capability) — then do not open at all.
-    const valueEditable = this.canEditLinkValue() && !link.aggregated;
-    if (!valueEditable && !this.canEditLinkSource() && !this.canEditLinkTarget()) return;
+    if (!this.canEditLinkValue() && !this.canEditLinkSource() && !this.canEditLinkTarget()) return;
     this.openCombo.set(null);
     this.editState.set({
       kind: 'link',
       index: link.sourceIndex,
-      aggregated: link.aggregated,
       source: link.source,
       target: link.target,
       seedValue: String(link.value),
@@ -1288,14 +1279,11 @@ export class AllomoneySankeyDiagram {
     listbox?.querySelector(`[id="${option.optionId}"]`)?.scrollIntoView({ block: 'nearest' });
   }
 
-  /**
-   * Whether the value field is editable for the open link edit: `canEditLinkValue`
-   * except on an aggregate, whose summed value cannot be written back.
-   */
+  /** Whether the value field is editable for the open link edit (`canEditLinkValue`). */
   protected readonly linkValueEditable = computed(() => {
     const edit = this.editState();
     if (!edit || edit.kind !== 'link') return false;
-    return this.canEditLinkValue() && !edit.aggregated;
+    return this.canEditLinkValue();
   });
 
   /** Closes any open edit overlay and collapses its comboboxes. */
@@ -1377,20 +1365,11 @@ export class AllomoneySankeyDiagram {
       return;
     }
 
-    // An aggregate's value is a derived sum, so it is never written back; its
-    // value field is suppressed in the overlay.
-    const editValue = this.canEditLinkValue() && !edit.aggregated;
+    const editValue = this.canEditLinkValue();
 
-    // An aggregate stands in for every parallel link between its two nodes, so a
-    // source/target change — or a clear — is applied to all of them; a plain link
-    // affects only the exact entry that was opened (by its position in the data).
-    const targets = edit.aggregated
-      ? new Set(
-          this.validation()
-            .links.filter((l) => l.source === edit.source && l.target === edit.target)
-            .map((l) => l.index),
-        )
-      : new Set([edit.index]);
+    // A plain (non-aggregated) link is the only kind that can be opened, so the
+    // edit affects exactly the entry that was opened (by its position in the data).
+    const targets = new Set([edit.index]);
 
     // Business rule 2: a link's value may be a positive number or empty. A link
     // needs a positive value to be drawn (see validateSankeyData), so emptying the
