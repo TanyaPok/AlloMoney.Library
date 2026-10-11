@@ -124,6 +124,14 @@ export interface SankeyOptions {
    */
   readonly canAddLink?: boolean;
   /**
+   * When `true` (the default), each flow's value label is hidden on the diagram;
+   * set it to `false` to show the per-link values. Hiding the labels does not
+   * affect the hover tooltip, which still reports a flow's value. When a value is
+   * supplied both here and through the component's `[hideLinkValue]` input, this
+   * one takes priority.
+   */
+  readonly hideLinkValue?: boolean;
+  /**
    * Message shown in the empty state when there are no flows to display.
    * Rendered as auto-escaped text (never as HTML), so any markup in the string
    * is shown literally and cannot execute. Defaults to `"No Data"`.
