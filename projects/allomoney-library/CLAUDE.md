@@ -213,7 +213,8 @@ A Sankey diagram is not accessible by default. Treat these as gates, not extras:
 - Current public surface: `AllomoneySankeyDiagram`, `provideAlloMoneyLibrary`,
   `ALLOMONEY_LIBRARY_CONFIG`, `DEFAULT_ALLOMONEY_LIBRARY_CONFIG`,
   `AlloMoneyLibraryConfig`, `ResolvedAlloMoneyLibraryConfig`, and the model
-  types `SankeyData` / `SankeyNode` / `SankeyLink` / `SankeyTheme`.
+  types `SankeyData` / `SankeyNode` / `SankeyLink` / `SankeyOptions` /
+  `SankeyTheme` / `SankeyOrientation` / `SankeyLegend` / `LegendLocation`.
 
 ## Testing
 
